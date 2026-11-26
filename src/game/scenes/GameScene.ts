@@ -33,6 +33,12 @@ export class GameScene extends Phaser.Scene {
   private slowUntil = 0;
   private levelId = 1;
   private chargeMul = 1;
+  private focusLeft = 0;
+  private parades = 0;
+  private paradeEvery = 0;
+  private moraleMul = 1;
+  private moraleTime = 0;
+  private rocketUsed = false;
   private repairAmount = BALANCE.repair.amount;
   private creditMul = 1;
   private superGemMul = 1;
@@ -71,6 +77,12 @@ export class GameScene extends Phaser.Scene {
     this.superGemMul = tuning.superGemMul;
     this.spawnBonus = tuning.spawnBonus;
     this.offers = battleShop(this.save, tuning.shopCostMul);
+    this.focusLeft = tuning.focusMoves;
+    this.paradeEvery = tuning.paradeEvery;
+    this.moraleMul = tuning.moraleMul;
+    this.moraleTime = tuning.moraleTime;
+    this.parades = 0;
+    this.rocketUsed = false;
     this.battle = new Battlefield(this, Math.random, tuning);
     for (const kind of tuning.startUnits) {
       this.battle.queueSpawn(kind);
@@ -84,6 +96,9 @@ export class GameScene extends Phaser.Scene {
       onMute: () => this.toggleMute(),
     }, this.offers);
     this.drawBelt();
+    if (this.focusLeft > 0) {
+      new UiButton(this, 420, 484, 88, 28, 'FOCUS', 0x3a6a4a, () => this.useFocus(), { fontSize: 11, depth: 46 });
+    }
 
     this.input.keyboard?.on('keydown', (event: KeyboardEvent) => {
       if (event.repeat) return;
@@ -109,6 +124,15 @@ export class GameScene extends Phaser.Scene {
     if (!this.finished && !this.helpOpen && !document.hidden) {
       const outcome = this.battle.update(dt);
       this.board.update(dt);
+      if (this.paradeEvery > 0) {
+        const due = Math.floor(this.battle.elapsed / this.paradeEvery);
+        if (due > this.parades) {
+          this.parades = due;
+          sfx.strike('missiles');
+          this.battle.playStrike('missiles');
+          this.battle.announce('PARADE');
+        }
+      }
       if (outcome !== 'play') this.finish(outcome);
     }
     this.hud.refresh(this.model(), time);
@@ -158,7 +182,15 @@ export class GameScene extends Phaser.Scene {
       this.battle.nudge(reward.combo >= 3 ? 6 : 4);
       if (reward.combo >= 2) this.battle.announce(`CASCADE x${formatMult(comboMultiplier(reward.combo))}`);
     }
+    if (reward.big && this.moraleTime > 0) this.battle.setMorale(this.moraleTime, this.moraleMul);
     this.showReward(reward);
+  }
+
+  private useFocus(): void {
+    if (this.helpOpen || this.finished || this.focusLeft <= 0) return;
+    if (!this.board.playFocusMove()) return;
+    this.focusLeft -= 1;
+    floatText(this, VIEW_W / 2, 500, 'FOCUS', '#8ff6e4');
   }
 
   private trails(pops: GemPop[]): void {
@@ -245,9 +277,17 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     if (item.effect === 'airstrike') {
-      if (!this.spendBelt(id)) return;
+      if (item.reusable) {
+        if (this.rocketUsed) return;
+        this.rocketUsed = true;
+      } else if (!this.spendBelt(id)) return;
       sfx.strike('missiles');
       this.battle.playStrike('missiles');
+      return;
+    }
+    if (item.effect === 'focus') {
+      if (!this.board.playFocusMove()) return;
+      if (!this.spendBelt(id)) return;
       return;
     }
     if (item.effect === 'bomb') {

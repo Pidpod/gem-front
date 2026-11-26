@@ -14,7 +14,7 @@ export class FactionScene extends Phaser.Scene {
   }
 
   init(data?: { picked?: FactionId }): void {
-    if (data?.picked === 'azure' || data?.picked === 'crimson') this.picked = data.picked;
+    if (data?.picked === 'azure' || data?.picked === 'crimson' || data?.picked === 'frost') this.picked = data.picked;
   }
 
   create(): void {
@@ -36,8 +36,7 @@ export class FactionScene extends Phaser.Scene {
         wordWrap: { width: 400 },
       })
       .setOrigin(0.5);
-    this.drawCard('azure', 150);
-    this.drawCard('crimson', 400);
+    (['azure', 'crimson', 'frost'] as const).forEach((id, index) => this.drawCard(id, 112 + index * 200));
     new UiButton(this, VIEW_W / 2, 760, 280, 60, 'MARCH', FACTIONS[this.picked].color, () => this.confirm(), {
       fontSize: 22,
     });
@@ -49,37 +48,34 @@ export class FactionScene extends Phaser.Scene {
     const selected = this.picked === id;
     const g = this.add.graphics();
     g.fillStyle(selected ? 0x1c2430 : 0x171b26, 1);
-    g.fillRoundedRect(28, y, VIEW_W - 56, 210, 14);
+    g.fillRoundedRect(28, y, VIEW_W - 56, 180, 14);
     g.lineStyle(3, selected ? faction.color : 0x2a3140, 1);
-    g.strokeRoundedRect(28, y, VIEW_W - 56, 210, 14);
+    g.strokeRoundedRect(28, y, VIEW_W - 56, 180, 14);
     g.fillStyle(faction.color, 1);
     if (id === 'azure') {
-      g.fillTriangle(78, y + 36, 108, y + 78, 48, y + 78);
-      g.fillStyle(0x9fd0f2, 1);
-      g.fillCircle(78, y + 34, 16);
+      g.fillCircle(70, y + 48, 16);
+    } else if (id === 'frost') {
+      g.fillRect(54, y + 34, 32, 28);
     } else {
-      g.fillCircle(78, y + 48, 18);
+      g.fillCircle(70, y + 48, 16);
       g.fillStyle(0x9fd7ff, 1);
-      g.fillCircle(108, y + 70, 8);
+      g.fillCircle(96, y + 62, 7);
     }
-    this.add.text(130, y + 36, faction.name, {
+    this.add.text(120, y + 24, faction.name, {
       fontFamily: FONT,
-      fontSize: '20px',
+      fontSize: '18px',
       color: INK,
       fontStyle: 'bold',
     });
-    this.add.text(130, y + 78, faction.blurb, {
+    this.add.text(120, y + 54, faction.blurb, {
       fontFamily: FONT,
-      fontSize: '15px',
+      fontSize: '14px',
       color: MUTED,
-      wordWrap: { width: 280 },
+      wordWrap: { width: 300 },
     });
-    this.add.text(130, y + 150, id === 'azure' ? 'Beachhead: the western shore' : 'Beachhead: the eastern harbor', {
-      fontFamily: FONT,
-      fontSize: '13px',
-      color: '#f0c43a',
-    });
-    const zone = this.add.zone(VIEW_W / 2, y + 105, VIEW_W - 56, 210).setInteractive({ useHandCursor: true });
+    const beach = id === 'azure' ? 'Beachhead: the western shore' : id === 'frost' ? 'Beachhead: the northern ice' : 'Beachhead: the eastern harbor';
+    this.add.text(120, y + 130, beach, { fontFamily: FONT, fontSize: '13px', color: '#f0c43a' });
+    const zone = this.add.zone(VIEW_W / 2, y + 90, VIEW_W - 56, 180).setInteractive({ useHandCursor: true });
     zone.on('pointerup', () => {
       this.picked = id;
       sfx.ui();
@@ -89,7 +85,7 @@ export class FactionScene extends Phaser.Scene {
 
   private confirm(): void {
     const save = loadProgress();
-    writeProgress({ ...save, faction: this.picked, factionPicked: true });
+    writeProgress({ ...save, faction: this.picked, factionPicked: true, commander: FACTIONS[this.picked].leader, pact: null });
     sfx.ui();
     this.scene.start('map');
   }

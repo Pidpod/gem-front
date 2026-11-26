@@ -1,10 +1,10 @@
 import { BUILDINGS, buildingById, LIBERATION } from '../config/cities';
-import { commanderById, isCommanderId, type CommanderId } from '../config/commanders';
+import { COMMANDERS, commanderById, isCommanderId, type CommanderId } from '../config/commanders';
 import { FLEET_COST } from '../config/hq';
-import { dropFor, itemById, xpGain, type GearSlot } from '../config/items';
+import { dropFor, itemById, levelForXp, xpGain, type GearSlot } from '../config/items';
 import { LEVELS, levelById, type LevelDef } from '../config/levels';
 import { UPGRADES, statAt, upgradeById, type UpgradeId } from '../config/upgrades';
-import { FACTIONS, isFactionId, type FactionId } from '../config/factions';
+import { FACTIONS, isFactionId, pactPartner, type FactionId } from '../config/factions';
 import { neighbors } from '../config/world';
 import type { RunStats } from './types';
 
@@ -41,6 +41,8 @@ export interface SaveData {
   faction: FactionId;
   /** False until the opening choice is confirmed. Old saves count as already chosen. */
   factionPicked: boolean;
+  /** Late pact with the other furnace or the ice. Azure never sets this. */
+  pact: FactionId | null;
 }
 
 export interface MemoryStorage {
@@ -68,6 +70,7 @@ export function freshSave(): SaveData {
     xp: {},
     faction: 'azure',
     factionPicked: false,
+    pact: null,
   };
 }
 
@@ -79,8 +82,12 @@ export function homeRegion(save: SaveData) {
   return FACTIONS[save.faction].startRegion;
 }
 
-export function priceOf(save: SaveData, cost: number): number {
-  const cut = save.discount > 0 && save.discount < 1 ? save.discount : 1;
+export function priceOf(save: SaveData, cost: number, upgrade = false): number {
+  let cut = save.discount > 0 && save.discount < 1 ? save.discount : 1;
+  const leader = commanderById(save.commander);
+  if (leader.shopCut) cut *= leader.shopCut;
+  if (upgrade && leader.upgradeCut) cut *= leader.upgradeCut;
+  if (save.pact) cut *= 0.9;
   return Math.max(0, Math.round(cost * cut));
 }
 
@@ -91,7 +98,11 @@ export function isCleared(save: SaveData, id: number): boolean {
 /** A node can be marched on once any neighboring road has been liberated, or it is that faction's first beachhead. */
 export function isReachable(save: SaveData, id: number): boolean {
   if (id === startNode(save)) return true;
-  return neighbors(id).some((next) => save.cleared.includes(next));
+  if (neighbors(id).some((next) => save.cleared.includes(next))) return true;
+  if (commanderById(save.commander).extraHop) {
+    return neighbors(id).some((next) => neighbors(next).some((far) => save.cleared.includes(far)));
+  }
+  return false;
 }
 
 export function reachableIds(save: SaveData): number[] {
@@ -137,6 +148,12 @@ export function grantVictory(
     const built = buildingById(id);
     if (built?.fundsPerWin) funds += built.fundsPerWin;
   }
+  const leader = commanderById(save.commander);
+  if (leader.planPerLevel) {
+    const nextLevel = levelForXp((save.xp[save.commander] ?? 0) + xpGain(level.boss, stars));
+    funds += leader.planPerLevel * nextLevel;
+  }
+  if (leader.fundsMul) funds = Math.round(funds * leader.fundsMul);
   const before = new Set(reachableIds(save));
   const cleared = firstClear ? [...save.cleared, level.id] : save.cleared;
   const gained = xpGain(level.boss, stars);
@@ -145,6 +162,11 @@ export function grantVictory(
   if (firstClear) {
     const found = dropFor(level.id);
     if (found) inventory = addStack(inventory, found, 1);
+    if (level.id === commanderById('mustard').unlockNode) {
+      inventory = addStack(inventory, 'sat-scan', 1);
+      inventory = addStack(inventory, 'mustard-rocket', 1);
+      inventory = addStack(inventory, 'ev-cell', 1);
+    }
   }
   const nextSave: SaveData = {
     ...save,
@@ -164,7 +186,7 @@ export function buyUpgrade(save: SaveData, id: UpgradeId): { save: SaveData; ok:
   const def = upgradeById(id);
   const rank = save.ranks[id] ?? 0;
   const tier = def.tiers[rank];
-  const price = tier ? priceOf(save, tier.cost) : 0;
+  const price = tier ? priceOf(save, tier.cost, true) : 0;
   if (!tier || save.funds < price) return { save, ok: false };
   return {
     ok: true,
@@ -345,7 +367,7 @@ function sanitize(raw: Partial<SaveData>): SaveData {
   }
   const equipped: SaveData['equipped'] = {};
   if (raw.equipped && typeof raw.equipped === 'object') {
-    for (const id of ['mira', 'holt', 'ivo', 'sera'] as const) {
+    for (const id of COMMANDERS.map((entry) => entry.id)) {
       const gear = raw.equipped[id];
       if (!gear) continue;
       const slots: Partial<Record<GearSlot, string>> = {};
@@ -362,7 +384,7 @@ function sanitize(raw: Partial<SaveData>): SaveData {
     : [];
   const xp: SaveData['xp'] = {};
   if (raw.xp && typeof raw.xp === 'object') {
-    for (const id of ['mira', 'holt', 'ivo', 'sera'] as const) {
+    for (const id of COMMANDERS.map((entry) => entry.id)) {
       const value = raw.xp[id];
       if (typeof value === 'number' && value > 0) xp[id] = Math.floor(value);
     }
@@ -385,6 +407,12 @@ function sanitize(raw: Partial<SaveData>): SaveData {
     xp,
     faction: typeof raw.faction === 'string' && isFactionId(raw.faction) ? raw.faction : 'azure',
     factionPicked: typeof raw.factionPicked === 'boolean' ? raw.factionPicked : true,
+    pact:
+      typeof raw.pact === 'string' &&
+      isFactionId(raw.pact) &&
+      pactPartner(typeof raw.faction === 'string' && isFactionId(raw.faction) ? raw.faction : 'azure') === raw.pact
+        ? raw.pact
+        : null,
   };
 }
 

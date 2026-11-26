@@ -35,6 +35,14 @@ export interface Tuning {
   startUnits: UnitKind[];
   regionTint: number;
   faction: FactionId;
+  speedMul: number;
+  tankArmor: number;
+  enemySlow: number;
+  enemySlowFor: number;
+  focusMoves: number;
+  paradeEvery: number;
+  moraleMul: number;
+  moraleTime: number;
   boss: boolean;
   title: string;
   levelId: number;
@@ -65,6 +73,14 @@ export function defaultTuning(): Tuning {
     startUnits: [],
     regionTint: 0,
     faction: 'azure',
+    speedMul: 1,
+    tankArmor: 1,
+    enemySlow: 1,
+    enemySlowFor: 0,
+    focusMoves: 0,
+    paradeEvery: 0,
+    moraleMul: 1,
+    moraleTime: 0,
     boss: false,
     title: 'Destroy the enemy base',
     levelId: 1,
@@ -137,7 +153,7 @@ export function tuningForLevel(levelId: number, save: SaveData = loadProgress())
   };
   const region = regionById(nodeById(level.id).region);
   return {
-    playerMax: Math.round(BALANCE.bases.playerHp * mul('baseHp') * (1 + baseHp) + (levelBonus - 1) * 18),
+    playerMax: Math.round(BALANCE.bases.playerHp * mul('baseHp') * (1 + baseHp) + (levelBonus - 1) * 18 + (commander.wallHp ?? 0)),
     enemyMax: level.enemyHp,
     firstDelay: level.firstDelay,
     intervalScale: level.intervalScale,
@@ -153,13 +169,21 @@ export function tuningForLevel(levelId: number, save: SaveData = loadProgress())
     superCharge,
     repairMul,
     repairAmount: Math.round(BALANCE.repair.amount * repairMul),
-    shopCostMul: shopMul,
+    shopCostMul: shopMul * (commander.shopCut ?? 1),
     creditMul: 1 + creditMul,
     superGemMul: 1 + superMul,
     spawnBonus,
     startUnits,
     regionTint: region.battleTint,
     faction: save.faction,
+    speedMul: commander.speedMul ?? 1,
+    tankArmor: commander.tankArmor ?? 1,
+    enemySlow: commander.enemySlow ?? 1,
+    enemySlowFor: commander.enemySlowFor ?? 0,
+    focusMoves: commander.focusMoves ?? 0,
+    paradeEvery: commander.paradeEvery ?? 0,
+    moraleMul: commander.moraleMul ?? 1,
+    moraleTime: commander.moraleTime ?? 0,
     boss: level.boss,
     title: level.boss ? `${level.name} · BOSS` : level.name,
     levelId: level.id,

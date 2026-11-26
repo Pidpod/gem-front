@@ -2,7 +2,7 @@ import type { UnitKind } from '../game/types';
 
 export type Rarity = 'common' | 'uncommon' | 'rare' | 'relic';
 export type GearSlot = 'weapon' | 'armor' | 'accessory';
-export type ConsumableEffect = 'shuffle' | 'repair' | 'airstrike' | 'bomb' | 'charge';
+export type ConsumableEffect = 'shuffle' | 'repair' | 'airstrike' | 'bomb' | 'charge' | 'focus';
 
 export interface ItemDef {
   id: string;
@@ -15,8 +15,10 @@ export interface ItemDef {
   price: number;
   /** Cleared node required before HQ will stock this. */
   requiresCleared?: number;
-  effect?: ConsumableEffect;
-  power?: number;
+    effect?: ConsumableEffect;
+    power?: number;
+    /** Stays in the belt. One use per battle. */
+    reusable?: boolean;
   unitDmg?: number;
   baseHp?: number;
   creditMul?: number;
@@ -202,6 +204,35 @@ export const ITEMS: ItemDef[] = [
     price: 0,
     effect: 'repair',
     power: 140,
+  },
+  {
+    id: 'sat-scan',
+    name: 'Sat Scan',
+    rarity: 'rare',
+    kind: 'consumable',
+    blurb: 'Mustard satellite. Plays the best move.',
+    price: 0,
+    effect: 'focus',
+  },
+  {
+    id: 'mustard-rocket',
+    name: 'Reusable Rocket',
+    rarity: 'relic',
+    kind: 'consumable',
+    blurb: 'One missile salvo each battle. The rocket comes back.',
+    price: 0,
+    effect: 'airstrike',
+    reusable: true,
+  },
+  {
+    id: 'ev-cell',
+    name: 'EV Cell',
+    rarity: 'rare',
+    kind: 'equip',
+    slot: 'accessory',
+    blurb: 'Electric tank cell. Tank matches field one extra tank.',
+    price: 0,
+    spawnBonus: { tank: 1 },
   },
 ];
 

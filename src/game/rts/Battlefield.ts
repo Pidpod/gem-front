@@ -335,6 +335,7 @@ export class Battlefield {
     body.setOrigin(0.5, 0.78);
     const small = unit.kind === 'infantry' || unit.kind === 'rocket' || unit.kind === 'medic';
     body.setScale(unit.kind === 'heli' ? 1.05 : unit.kind === 'ship' || unit.kind === 'heavy' ? 1.15 : small ? 0.95 : 1.08);
+    if (this.tuning.faction === 'frost' && this.skin(unit.side) === 'player') body.setTint(0xd6ecff);
     const hp = this.scene.add.graphics();
     root.add([body, hp]);
     this.world.add(root);
@@ -554,6 +555,10 @@ export class Battlefield {
     sprite.setDepth(at.sy);
     this.world.add(sprite);
     return sprite;
+  }
+
+  setMorale(seconds: number, mul: number): void {
+    this.sim.setMorale(seconds, mul);
   }
 
   private skin(side: Side): 'player' | 'enemy' {

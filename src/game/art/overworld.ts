@@ -11,6 +11,8 @@ export function installOverworld(scene: Phaser.Scene): void {
   bake(scene, 'ow-azure-fort', 140, 110, (ctx) => paintBase(ctx, 'azure', 'fort'));
   bake(scene, 'ow-crimson', 120, 96, (ctx) => paintBase(ctx, 'crimson', 'outpost'));
   bake(scene, 'ow-crimson-fort', 140, 110, (ctx) => paintBase(ctx, 'crimson', 'fort'));
+  bake(scene, 'ow-frost', 120, 96, (ctx) => paintBase(ctx, 'frost', 'outpost'));
+  bake(scene, 'ow-frost-fort', 140, 110, (ctx) => paintBase(ctx, 'frost', 'fort'));
   bake(scene, 'ow-rubble', 120, 96, paintRubble);
   bake(scene, 'ow-tree', 36, 48, paintTree);
   bake(scene, 'ow-palm', 36, 48, paintPalm);
@@ -102,8 +104,9 @@ function paintPlate(ctx: CanvasRenderingContext2D, region: RegionId): void {
   ctx.fillRect(0, PLATE_H - 40, PLATE_W, 40);
 }
 
-function paintBase(ctx: CanvasRenderingContext2D, faction: 'azure' | 'crimson', kind: 'outpost' | 'fort'): void {
+function paintBase(ctx: CanvasRenderingContext2D, faction: 'azure' | 'crimson' | 'frost', kind: 'outpost' | 'fort'): void {
   const blue = faction === 'azure';
+  const ice = faction === 'frost';
   ctx.fillStyle = 'rgba(0,0,0,0.28)';
   ctx.beginPath();
   ctx.ellipse(60, 84, 40, 10, 0, 0, Math.PI * 2);
@@ -121,7 +124,7 @@ function paintBase(ctx: CanvasRenderingContext2D, faction: 'azure' | 'crimson', 
     ctx.lineWidth = 4;
     ctx.strokeRect(18, 28, 84, 52);
   }
-  ctx.fillStyle = blue ? '#3a78c8' : '#8a3030';
+  ctx.fillStyle = blue ? '#3a78c8' : ice ? '#e8f2fb' : '#8a3030';
   ctx.fillRect(34, 40, 28, 22);
   if (blue) {
     ctx.fillStyle = '#9fd0f2';
@@ -148,7 +151,7 @@ function paintBase(ctx: CanvasRenderingContext2D, faction: 'azure' | 'crimson', 
     ctx.lineTo(86, 28);
     ctx.stroke();
   }
-  ctx.fillStyle = blue ? '#e2c15a' : '#c4473a';
+  ctx.fillStyle = blue ? '#e2c15a' : ice ? '#7eb6e8' : '#c4473a';
   ctx.fillRect(28, 24, 2, 22);
   ctx.fillRect(28, 24, 10, 6);
   if (!blue) {
