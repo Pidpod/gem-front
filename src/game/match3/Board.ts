@@ -3,6 +3,7 @@ import { BALANCE } from '../../config/balance';
 import { boardGeom, cellCenter } from '../layout';
 import { GEM_HEX } from '../theme';
 import type { Cell, GemColor, Pos, Rng, Special } from '../types';
+import { paintMetal } from '../ui/metal';
 import { drawGem } from './drawGem';
 import {
   activationForSwap,
@@ -140,10 +141,7 @@ export class Board {
     const pad = 10;
     const panel = this.scene.add.graphics().setDepth(12);
     this.panel = panel;
-    panel.fillStyle(0x171b26, 1);
-    panel.fillRoundedRect(g.originX - pad, g.originY - pad, g.size + pad * 2, g.size + pad * 2, 14);
-    panel.lineStyle(2, 0xffffff, 0.06);
-    panel.strokeRoundedRect(g.originX - pad, g.originY - pad, g.size + pad * 2, g.size + pad * 2, 14);
+    paintMetal(panel, g.originX - pad - 8, g.originY - pad - 8, g.size + pad * 2 + 16, g.size + pad * 2 + 16, 0x5c5648);
     panel.fillStyle(0x10141d, 1);
     for (let r = 0; r < g.rows; r++) {
       for (let c = 0; c < g.cols; c++) {

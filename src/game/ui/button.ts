@@ -12,6 +12,7 @@ export class UiButton {
   private fill: number;
   private enabled = true;
   private hovered = false;
+  private pressed = false;
   private pulse = false;
 
   constructor(
@@ -56,10 +57,14 @@ export class UiButton {
     });
     this.zone.on('pointerout', () => {
       this.hovered = false;
-      this.draw();
+      this.release();
     });
+    this.zone.on('pointerup', () => this.release());
     this.zone.on('pointerdown', () => {
       if (!this.enabled) return;
+      this.pressed = true;
+      this.root.setScale(0.97);
+      this.draw();
       void sfx.unlock();
       sfx.ui();
       onClick();
@@ -96,14 +101,31 @@ export class UiButton {
     this.root.setScale(1 + Math.sin(time / 170) * 0.035);
   }
 
+  private release(): void {
+    this.pressed = false;
+    if (!this.pulse) this.root.setScale(1);
+    this.draw();
+  }
+
   private draw(): void {
-    const { w, h, fill } = this;
+    const { w, h } = this;
+    const face = this.hovered && this.enabled ? this.fill + 0x181410 : this.fill;
+    const x = -w / 2;
+    const y = -h / 2;
+    const light = this.pressed ? 0x2a261c : 0xe6d7a8;
+    const dark = this.pressed ? 0xe6d7a8 : 0x1a1610;
     this.gfx.clear();
-    this.gfx.fillStyle(0x000000, 0.28);
-    this.gfx.fillRoundedRect(-w / 2 + 2, -h / 2 + 3, w, h, 10);
-    this.gfx.fillStyle(this.hovered && this.enabled ? fill + 0x101010 : fill, 1);
-    this.gfx.fillRoundedRect(-w / 2, -h / 2, w, h, 10);
-    this.gfx.lineStyle(2, 0xffffff, this.enabled ? 0.18 : 0.05);
-    this.gfx.strokeRoundedRect(-w / 2, -h / 2, w, h, 10);
+    this.gfx.fillStyle(0x100e0c, 1);
+    this.gfx.fillRect(x, y, w, h);
+    this.gfx.fillStyle(light, 1);
+    this.gfx.fillRect(x, y, w, 3);
+    this.gfx.fillRect(x, y, 3, h);
+    this.gfx.fillStyle(dark, 1);
+    this.gfx.fillRect(x, y + h - 4, w, 4);
+    this.gfx.fillRect(x + w - 4, y, 4, h);
+    this.gfx.fillStyle(this.enabled ? face : 0x3a3834, 1);
+    this.gfx.fillRect(x + 4, y + 4, w - 8, h - 8);
+    this.gfx.fillStyle(this.pressed ? 0x3a3428 : 0x9a8c64, 0.9);
+    this.gfx.fillRect(x + 4, y + 4, w - 8, 2);
   }
 }

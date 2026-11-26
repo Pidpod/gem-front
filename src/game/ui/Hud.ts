@@ -195,10 +195,14 @@ function paintBar(
   pct: number,
   color: number,
 ): void {
+  g.fillStyle(0x1c1812, 1);
+  g.fillRect(x - 2, y - 2, w + 4, h + 4);
+  g.fillStyle(0xd9c89a, 1);
+  g.fillRect(x - 2, y - 2, w + 4, 2);
   g.fillStyle(0x10141d, 1);
-  g.fillRoundedRect(x, y, w, h, 7);
+  g.fillRect(x, y, w, h);
   g.fillStyle(color, 1);
-  g.fillRoundedRect(x, y, Math.max(8, w * pct), h, 7);
+  g.fillRect(x, y, Math.max(8, w * pct), h);
 }
 
 function shopColor(kind: ShopKind): number {

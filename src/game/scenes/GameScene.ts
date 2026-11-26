@@ -375,6 +375,9 @@ export class GameScene extends Phaser.Scene {
         units: this.battle.unitCounts,
       }),
       win: () => this.finish('win'),
+      spawn: (kind: 'infantry' | 'tank' | 'heli' | 'medic' | 'rocket' | 'ship' | 'artillery' | 'heavy') => {
+        this.battle.queueSpawn(kind);
+      },
       strike: (kind: StrikeKind) => {
         sfx.strike(kind);
         this.battle.playStrike(kind);

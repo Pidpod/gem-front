@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import './fonts.css';
 import { VIEW_H, VIEW_W } from './game/layout';
 import { CityScene } from './game/scenes/CityScene';
 import { CommanderScene } from './game/scenes/CommanderScene';

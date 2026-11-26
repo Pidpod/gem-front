@@ -8,6 +8,7 @@ import { installArt } from '../art/sheets';
 import { VIEW_H, VIEW_W } from '../layout';
 import { isCleared, isReachable, loadProgress, resetProgress, type SaveData } from '../progress';
 import { FONT, INK, MUTED } from '../theme';
+import { paintFrame, paintMetal } from '../ui/metal';
 import { DialogueBox } from '../ui/dialogueBox';
 import { UiButton } from '../ui/button';
 
@@ -62,6 +63,10 @@ export class MapScene extends Phaser.Scene {
   }
 
   private drawChrome(): void {
+    const bar = this.add.graphics().setDepth(20);
+    paintMetal(bar, 0, 0, VIEW_W, 86, 0x3e3a32);
+    const frame = this.add.graphics().setDepth(28);
+    paintFrame(frame, 0, 86, VIEW_W, VIEW_BOTTOM - 78, 8);
     const commander = commanderById(this.save.commander);
     const level = levelForXp(this.save.xp[this.save.commander] ?? 0);
     this.add
