@@ -29,4 +29,6 @@ const game = new Phaser.Game({
   scene: [TitleScene, FactionScene, CommanderScene, MapScene, HqScene, CityScene, GameScene, EndScene],
 });
 
-void game;
+if (new URLSearchParams(window.location.search).has('debug')) {
+  (window as unknown as { __gemGame?: Phaser.Game }).__gemGame = game;
+}

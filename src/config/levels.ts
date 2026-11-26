@@ -67,8 +67,45 @@ export const LEVELS: LevelDef[] = [
   })),
 ];
 
+const ENDLESS_NAMES = [
+  'Outer Relay',
+  'Ash March',
+  'Night Battery',
+  'Glass Spur',
+  'Redoubt Nine',
+  'Salt Line',
+  'Cinder Watch',
+  'Deep Yard',
+  'Storm Pier',
+  'Pale Fort',
+];
+
+/** A front past the drawn map. Each step is a little harder than the last. */
+export function endlessLevel(id: number): LevelDef {
+  const step = Math.max(1, id - LEVELS.length);
+  const title = ENDLESS_NAMES[(step - 1) % ENDLESS_NAMES.length] ?? 'Outer Relay';
+  const wave = Math.floor((step - 1) / ENDLESS_NAMES.length);
+  return {
+    id,
+    name: wave > 0 ? `${title} ${wave + 1}` : title,
+    blurb: 'The front keeps moving',
+    enemyHp: 1100 + id * 55,
+    intervalScale: Math.max(0.55, 0.9 - step * 0.015),
+    firstDelay: Math.max(3.2, 5.5 - step * 0.05),
+    enemyHpScale: 1.15 + step * 0.02,
+    enemyDmgScale: 1.08 + step * 0.01,
+    mix: step % 4 === 0 ? 'boss' : step % 2 === 0 ? 'air' : 'assault',
+    boss: step % 4 === 0,
+    funds: 40 + id * 2,
+    starBonus: 14,
+    starHp: 0.35,
+    starTime: 75,
+    starCombo: 3,
+  };
+}
+
 export function levelById(id: number): LevelDef {
-  return LEVELS.find((level) => level.id === id) ?? LEVELS[0]!;
+  return LEVELS.find((level) => level.id === id) ?? (id > LEVELS.length ? endlessLevel(id) : LEVELS[0]!);
 }
 
 export function rollMix(mix: LevelMix, elapsed: number, rng: () => number): UnitKind {

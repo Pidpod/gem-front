@@ -1,20 +1,23 @@
 import { sfx } from '../../audio/sfx';
 import { BALANCE, comboMultiplier, STRIKE_LABEL, UNIT_NAME, type ShopEntry } from '../../config/balance';
 import { itemById } from '../../config/items';
+import { levelById } from '../../config/levels';
 import { battleShop } from '../battleShop';
 import { HOW_TO_LINES } from '../copy';
 import { boardGeom, commandButtonX, COMMAND, LANE, VIEW_H, VIEW_W } from '../layout';
 import { tuningForLevel } from '../loadout';
 import { Board, type GemPop } from '../match3/Board';
-import { consumeItem, countOf, isCleared, isReachable, loadProgress, startNode, writeProgress, type SaveData } from '../progress';
+import { bonusExtras } from '../match3/bonus';
+import { consumeItem, countOf, grantVictory, isCleared, isReachable, loadProgress, startNode, writeProgress, type SaveData } from '../progress';
 import type { MatchReward } from '../match3/rewards';
 import { Battlefield } from '../rts/Battlefield';
-import { FONT, GEM_CSS, GEM_HEX, INK } from '../theme';
+import { FONT, GEM_CSS, GEM_HEX, GOLD, INK, MUTED } from '../theme';
 import type { GemColor, Outcome, RunStats, ShopKind, StrikeKind, UnitKind } from '../types';
 import { emptyStats } from '../types';
 import { addBackdrop } from '../ui/backdrop';
 import { UiButton } from '../ui/button';
 import { floatText } from '../ui/floatText';
+import { paintMetal } from '../ui/metal';
 import { Hud, type HudModel } from '../ui/Hud';
 
 export class GameScene extends Phaser.Scene {
@@ -45,15 +48,20 @@ export class GameScene extends Phaser.Scene {
   private spawnBonus: Partial<Record<UnitKind, number>> = {};
   private offers: ShopEntry[] = [];
   private save: SaveData = loadProgress();
+  private mode: 'play' | 'bonus' | 'clear' = 'play';
+  private skipping = false;
+  private bonusScore = 0;
+  private bonusLabel: Phaser.GameObjects.Text | null = null;
 
   constructor() {
     super('game');
   }
 
-  init(data?: { level?: number }): void {
+  init(data?: { level?: number; chain?: boolean }): void {
     const save = loadProgress();
     const requested = data?.level && data.level > 0 ? data.level : startNode(save);
-    this.levelId = isReachable(save, requested) || isCleared(save, requested) ? requested : startNode(save);
+    if (data?.chain && requested > 0) this.levelId = Math.min(400, requested);
+    else this.levelId = isReachable(save, requested) || isCleared(save, requested) ? requested : startNode(save);
   }
 
   create(): void {
@@ -83,6 +91,10 @@ export class GameScene extends Phaser.Scene {
     this.moraleTime = tuning.moraleTime;
     this.parades = 0;
     this.rocketUsed = false;
+    this.mode = 'play';
+    this.skipping = false;
+    this.bonusScore = 0;
+    this.bonusLabel = null;
     this.battle = new Battlefield(this, Math.random, tuning);
     for (const kind of tuning.startUnits) {
       this.battle.queueSpawn(kind);
@@ -100,8 +112,21 @@ export class GameScene extends Phaser.Scene {
       new UiButton(this, 420, 484, 88, 28, 'FOCUS', 0x3a6a4a, () => this.useFocus(), { fontSize: 11, depth: 46 });
     }
 
+    this.input.on('pointerdown', () => {
+      if (this.mode === 'bonus') this.skipping = true;
+    });
+
     this.input.keyboard?.on('keydown', (event: KeyboardEvent) => {
       if (event.repeat) return;
+      if (this.mode === 'bonus') {
+        this.skipping = true;
+        return;
+      }
+      if (this.mode === 'clear') {
+        if (event.key === 'Enter' || event.key === ' ') this.advance();
+        else if (event.key === 'Escape') this.scene.start('map');
+        return;
+      }
       const key = event.key.toLowerCase();
       const shopIndex = '123456'.indexOf(key);
       const offered = shopIndex >= 0 ? this.offers[shopIndex] : undefined;
@@ -372,19 +397,139 @@ export class GameScene extends Phaser.Scene {
     this.helpOpen = false;
     this.board.setSuspended(true);
     this.closeHelp();
-    if (result === 'win') sfx.win();
-    else sfx.lose();
-    this.battle.announce(result === 'win' ? 'VICTORY' : 'DEFEAT');
-    window.setTimeout(() => {
-      if (!this.scene.isActive()) return;
-      this.scene.start('end', {
-        result,
-        stats: { ...this.stats, elapsed: this.battle.elapsed },
-        levelId: this.levelId,
-        playerHp: this.battle.playerHp,
-        playerMax: this.battle.playerMax,
-      });
-    }, 900);
+    if (result === 'lose') {
+      sfx.lose();
+      this.battle.announce('DEFEAT');
+      window.setTimeout(() => {
+        if (!this.scene.isActive()) return;
+        this.scene.start('end', {
+          result,
+          stats: { ...this.stats, elapsed: this.battle.elapsed },
+          levelId: this.levelId,
+          playerHp: this.battle.playerHp,
+          playerMax: this.battle.playerMax,
+        });
+      }, 900);
+      return;
+    }
+    sfx.win();
+    void this.runBonus();
+  }
+
+  private async runBonus(): Promise<void> {
+    if (!this.scene.isActive()) return;
+    this.mode = 'bonus';
+    const playerHp = this.battle.playerHp;
+    const playerMax = this.battle.playerMax;
+    const baseScore = this.stats.creditsEarned;
+    while (this.board.isBusy() && this.scene.isActive()) await sleep(40);
+    if (!this.scene.isActive()) return;
+    const level = levelById(this.levelId);
+    const extras = bonusExtras({
+      elapsed: this.battle.elapsed,
+      starTime: level.starTime,
+      bestCombo: this.stats.bestCombo,
+      superCharge: this.superCharge,
+    });
+    this.battle.announce('BONUS BLAST');
+    this.bonusLabel = this.add
+      .text(VIEW_W / 2, 482, 'BONUS 0', {
+        fontFamily: FONT,
+        fontSize: '22px',
+        color: GOLD,
+        fontStyle: 'bold',
+        stroke: '#1a1208',
+        strokeThickness: 4,
+      })
+      .setOrigin(0.5)
+      .setDepth(80);
+    await this.board.bonusBlast({
+      extras,
+      skip: () => this.skipping,
+      onStep: (points, pops, combo) => {
+        const scored = Math.round(points * this.creditMul);
+        this.bonusScore += scored;
+        this.stats.creditsEarned += scored;
+        this.stats.gemsCleared += pops.length;
+        this.stats.bestCombo = Math.max(this.stats.bestCombo, combo);
+        this.bonusLabel?.setText(`BONUS ${this.bonusScore}`);
+        const pop = pops[0];
+        if (pop) floatText(this, pop.x, pop.y, `+${scored}`, GOLD);
+        this.battle.salvo(combo === 1 && scored >= 80 ? 'bomb' : 'line');
+      },
+    });
+    if (!this.scene.isActive()) return;
+    const ratio = playerMax > 0 ? playerHp / playerMax : 0;
+    const granted = grantVictory(loadProgress(), this.levelId, { ...this.stats, elapsed: this.battle.elapsed }, ratio, this.bonusScore);
+    writeProgress(granted.save);
+    this.save = granted.save;
+    this.mode = 'clear';
+    this.openClear(level.name, baseScore, this.bonusScore, granted.stars, granted.funds);
+  }
+
+  private openClear(name: string, base: number, bonus: number, stars: number, funds: number): void {
+    this.bonusLabel?.destroy();
+    this.bonusLabel = null;
+    const layer = this.add.container(0, 0).setDepth(130);
+    const dim = this.add.rectangle(VIEW_W / 2, VIEW_H / 2, VIEW_W, VIEW_H, 0x07080c, 0.62);
+    dim.setInteractive();
+    const panel = this.add.graphics();
+    paintMetal(panel, 24, 150, VIEW_W - 48, 660, 0x3a342c);
+    const title = this.add
+      .text(VIEW_W / 2, 188, 'LEVEL CLEAR', {
+        fontFamily: FONT,
+        fontSize: '28px',
+        color: '#e6d7a8',
+        fontStyle: 'bold',
+        letterSpacing: 3,
+      })
+      .setOrigin(0.5);
+    const place = this.add
+      .text(VIEW_W / 2, 228, name, { fontFamily: FONT, fontSize: '16px', color: MUTED })
+      .setOrigin(0.5);
+    const lines = this.add
+      .text(
+        VIEW_W / 2,
+        280,
+        `BASE   ${base}\nBONUS   ${bonus}\nTOTAL   ${base + bonus}`,
+        { fontFamily: FONT, fontSize: '22px', color: INK, align: 'center', lineSpacing: 10 },
+      )
+      .setOrigin(0.5, 0);
+    const star = this.add
+      .text(VIEW_W / 2, 430, [1, 2, 3].map((n) => (n <= stars ? '★' : '☆')).join('  '), {
+        fontFamily: FONT,
+        fontSize: '32px',
+        color: GOLD,
+      })
+      .setOrigin(0.5);
+    const pay = this.add
+      .text(VIEW_W / 2, 478, `+${funds} WAR FUNDS`, {
+        fontFamily: FONT,
+        fontSize: '20px',
+        color: GOLD,
+        fontStyle: 'bold',
+      })
+      .setOrigin(0.5);
+    layer.add([dim, panel, title, place, lines, star, pay]);
+    const next = new UiButton(this, VIEW_W / 2, 560, 300, 64, 'NEXT', 0x149684, () => this.advance(), {
+      fontSize: 26,
+      depth: 140,
+    });
+    const hq = new UiButton(this, VIEW_W / 2, 650, 240, 48, 'HQ', 0x2a3344, () => this.scene.start('hq'), {
+      fontSize: 18,
+      depth: 140,
+    });
+    const map = new UiButton(this, VIEW_W / 2, 716, 240, 48, 'MAP', 0x2a3344, () => this.scene.start('map'), {
+      fontSize: 18,
+      depth: 140,
+    });
+    layer.add([next.root, hq.root, map.root]);
+  }
+
+  private advance(): void {
+    if (this.mode !== 'clear') return;
+    this.mode = 'play';
+    this.scene.start('game', { level: this.levelId + 1, chain: true });
   }
 
   private exposeDebug(): void {
@@ -409,12 +554,15 @@ export class GameScene extends Phaser.Scene {
         playerHp: this.battle.playerHp,
         enemyHp: this.battle.enemyHp,
         outcome: this.finished ? this.endResult : this.battle.outcome,
+        phase: this.mode,
+        bonus: this.bonusScore,
         busy: this.board.isBusy(),
         elapsed: this.battle.elapsed,
         help: this.helpOpen,
         units: this.battle.unitCounts,
       }),
       win: () => this.finish('win'),
+      plant: () => this.board.plantBomb(),
       spawn: (kind: 'infantry' | 'tank' | 'heli' | 'medic' | 'rocket' | 'ship' | 'artillery' | 'heavy') => {
         this.battle.queueSpawn(kind);
       },
@@ -469,4 +617,10 @@ function trailTarget(color: GemColor): { x: number; y: number } {
 
 function formatMult(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
 }

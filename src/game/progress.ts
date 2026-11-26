@@ -142,6 +142,7 @@ export function grantVictory(
   levelId: number,
   stats: RunStats,
   hpRatio: number,
+  bonusScore = 0,
 ): { save: SaveData; stars: number; funds: number; hasNext: boolean } {
   const level = levelById(levelId);
   const stars = scoreStars(level, stats, hpRatio);
@@ -161,6 +162,7 @@ export function grantVictory(
   const perks = perkMods(firstClear ? [...save.cleared, level.id] : save.cleared);
   funds += perks.funds;
   funds = Math.round(funds * perks.fundsMul + save.funds * perks.interest);
+  if (bonusScore > 0) funds += Math.max(1, Math.round(bonusScore / 10));
   const before = new Set(reachableIds(save));
   const cleared = firstClear ? [...save.cleared, level.id] : save.cleared;
   const gained = xpGain(level.boss, stars);
@@ -340,7 +342,7 @@ function sanitize(raw: Partial<SaveData>): SaveData {
   const funds = Math.max(0, Math.floor(Number(raw.funds) || 0));
   let cleared: number[] = [];
   if (Array.isArray(raw.cleared)) {
-    cleared = [...new Set(raw.cleared.filter((id) => LEVELS.some((level) => level.id === id)))];
+    cleared = [...new Set(raw.cleared.filter((id) => Number.isInteger(id) && id >= 1 && id <= 400))];
   } else if (typeof raw.unlocked === 'number') {
     for (let id = 1; id < unlocked; id++) cleared.push(id);
   }
@@ -348,9 +350,9 @@ function sanitize(raw: Partial<SaveData>): SaveData {
   const discount = typeof raw.discount === 'number' && raw.discount > 0 && raw.discount <= 1 ? raw.discount : 1;
   const stars: Record<string, number> = {};
   if (raw.stars && typeof raw.stars === 'object') {
-    for (const level of LEVELS) {
-      const value = raw.stars[String(level.id)];
-      if (typeof value === 'number') stars[String(level.id)] = clampInt(value, 0, 3);
+    for (const [key, value] of Object.entries(raw.stars)) {
+      const id = Number(key);
+      if (Number.isInteger(id) && id >= 1 && id <= 400 && typeof value === 'number') stars[String(id)] = clampInt(value, 0, 3);
     }
   }
   const ranks: Partial<Record<UpgradeId, number>> = {};
