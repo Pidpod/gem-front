@@ -44,6 +44,8 @@ export class BattleSim {
   readonly enemyMax: number;
   elapsed = 0;
   outcome: Outcome = 'play';
+  private moraleUntil = 0;
+  private moraleMul = 1;
   private spawnTimer: number;
   private spawnSerial = 0;
   private readonly rng: Rng;
@@ -98,7 +100,7 @@ export class BattleSim {
         } else if (baseIn) {
           if (trySwing(unit, dt)) hits.push({ attacker: unit, target: baseSide });
         } else {
-          stepForward(unit, dt);
+          stepForward(unit, dt, this.pace(unit));
           const below = nearestInRange(
             unit,
             foes.filter((other) => other.kind !== lane),
@@ -112,7 +114,7 @@ export class BattleSim {
         } else if (baseIn) {
           if (trySwing(unit, dt)) hits.push({ attacker: unit, target: baseSide });
         } else {
-          stepForward(unit, dt);
+          stepForward(unit, dt, this.pace(unit));
         }
       }
     }
@@ -135,7 +137,11 @@ export class BattleSim {
         });
         events.push({ type: 'base', side: hit.target, amount });
       } else if (hit.target.hp > 0) {
-        const amount = Math.round(hit.attacker.damage * attackMultiplier(hit.attacker.kind, hit.target.kind));
+        let amount = Math.round(hit.attacker.damage * attackMultiplier(hit.attacker.kind, hit.target.kind));
+        if (hit.target.kind === 'tank' && hit.target.side === 'player' && this.tuning.tankArmor > 1) {
+          amount = Math.max(1, Math.round(amount / this.tuning.tankArmor));
+        }
+        if (hit.attacker.side === 'player' && this.elapsed < this.moraleUntil) amount = Math.round(amount * this.moraleMul);
         hit.target.hp -= amount;
         events.push({
           type: 'attack',
@@ -214,7 +220,7 @@ export class BattleSim {
     const maxX = LANE.enemyX - 20;
     if (Math.abs(goal - unit.x) > 3) {
       const dir = goal > unit.x ? 1 : -1;
-      unit.x = clamp(unit.x + dir * unit.speed * dt, minX, maxX);
+      unit.x = clamp(unit.x + dir * unit.speed * this.pace(unit) * dt, minX, maxX);
     }
     if (unit.side === 'player') unit.x = Math.min(unit.x, front - 6);
     else unit.x = Math.max(unit.x, front + 6);
@@ -296,13 +302,24 @@ export class BattleSim {
     }
     return null;
   }
+
+  setMorale(seconds: number, mul: number): void {
+    this.moraleUntil = this.elapsed + seconds;
+    this.moraleMul = mul;
+  }
+
+  private pace(unit: SimUnit): number {
+    let pace = unit.side === 'player' ? this.tuning.speedMul : 1;
+    if (unit.side === 'enemy' && this.elapsed < this.tuning.enemySlowFor) pace *= this.tuning.enemySlow;
+    return pace;
+  }
 }
 
-function stepForward(unit: SimUnit, dt: number): void {
+function stepForward(unit: SimUnit, dt: number, pace = 1): void {
   const dir = unit.side === 'player' ? 1 : -1;
   const minX = LANE.playerX + LANE.baseRadius * 0.35;
   const maxX = LANE.enemyX - LANE.baseRadius * 0.35;
-  unit.x = clamp(unit.x + dir * unit.speed * dt, minX, maxX);
+  unit.x = clamp(unit.x + dir * unit.speed * pace * dt, minX, maxX);
 }
 
 function trySwing(unit: SimUnit, dt: number): boolean {

@@ -1,6 +1,6 @@
 import { sfx } from '../../audio/sfx';
 import { levelById } from '../../config/levels';
-import { otherFaction, skinFor } from '../../config/factions';
+import { FACTIONS, garrison, pactPartner, skinFor } from '../../config/factions';
 import { GLOBE_H, GLOBE_W, PLATE_H, PLATE_W, TERRITORIES, platePos, territoryByRegion } from '../../config/globe';
 import { commanderById } from '../../config/commanders';
 import { levelForXp } from '../../config/items';
@@ -9,7 +9,7 @@ import { installIso } from '../art/iso';
 import { installOverworld } from '../art/overworld';
 import { installArt } from '../art/sheets';
 import { VIEW_H, VIEW_W } from '../layout';
-import { homeRegion, isCleared, isReachable, loadProgress, resetProgress, type SaveData } from '../progress';
+import { homeRegion, isCleared, isReachable, loadProgress, resetProgress, startNode, writeProgress, type SaveData } from '../progress';
 import { FONT, INK, MUTED } from '../theme';
 import { paintFrame, paintMetal } from '../ui/metal';
 import { DialogueBox } from '../ui/dialogueBox';
@@ -131,6 +131,7 @@ export class MapScene extends Phaser.Scene {
       depth: 40,
     });
     this.globeButton.root.setVisible(false);
+    this.drawPact();
   }
 
   private drawRadar(): void {
@@ -235,12 +236,15 @@ export class MapScene extends Phaser.Scene {
   private addSite(node: WorldNode): void {
     const at = platePos(node.id);
     const owned = isCleared(this.save, node.id);
-    const faction = owned ? this.save.faction : otherFaction(this.save.faction);
+    const faction = owned ? this.save.faction : garrison(node.region, this.save.faction);
     let key = 'ow-rubble';
-    if (!(node.city && !owned)) key = faction === 'azure' ? (node.kind === 'boss' ? 'ow-azure-fort' : 'ow-azure') : node.kind === 'boss' ? 'ow-crimson-fort' : 'ow-crimson';
+    if (!(node.city && !owned && node.kind !== 'boss')) {
+      const fort = node.kind === 'boss';
+      key = faction === 'azure' ? (fort ? 'ow-azure-fort' : 'ow-azure') : faction === 'frost' ? (fort ? 'ow-frost-fort' : 'ow-frost') : fort ? 'ow-crimson-fort' : 'ow-crimson';
+    }
     const sprite = this.add.sprite(at.x, at.y, key).setOrigin(0.5, 0.82).setScale(node.kind === 'side' ? 0.72 : node.kind === 'boss' ? 1.05 : 0.9);
     this.world.add(sprite);
-    if (faction === 'crimson' && key !== 'ow-rubble') {
+    if ((faction === 'crimson' || faction === 'frost') && key !== 'ow-rubble') {
       const glow = this.add.circle(at.x + 28, at.y - 20, 5, 0x7ad7ff, 0.85);
       this.tweens.add({ targets: glow, alpha: 0.2, yoyo: true, repeat: -1, duration: 500 });
       this.world.add(glow);
@@ -313,7 +317,7 @@ export class MapScene extends Phaser.Scene {
   }
 
   private homeNode(): number {
-    return homeRegion(this.save) === 'coast' ? 15 : 1;
+    return startNode(this.save);
   }
 
   private pendingAfter(): number[] {
@@ -458,7 +462,7 @@ export class MapScene extends Phaser.Scene {
         targets: this.token,
         x: at.x,
         y: at.y + 8,
-        duration: 420,
+        duration: Math.round(420 * (commanderById(this.save.commander).marchScale ?? 1)),
         onUpdate: () => {
           const frame = Math.floor(this.time.now / 120) % 2;
           this.token?.setFrame(String(frame));
@@ -552,6 +556,37 @@ export class MapScene extends Phaser.Scene {
     const viewH = VIEW_BOTTOM - VIEW_TOP;
     const min = Math.min(VIEW_TOP, VIEW_TOP + viewH - this.mapH);
     return Math.max(min, Math.min(VIEW_TOP, y));
+  }
+
+  private drawPact(): void {
+    if (this.save.cleared.length < 8) return;
+    const partner = pactPartner(this.save.faction);
+    if (!partner) {
+      this.add
+        .text(VIEW_W / 2, 708, 'No pacts. Outbuild both rivals.', {
+          fontFamily: FONT,
+          fontSize: '12px',
+          color: '#f0c43a',
+        })
+        .setOrigin(0.5)
+        .setDepth(36);
+      return;
+    }
+    if (this.save.pact) {
+      this.add
+        .text(VIEW_W / 2, 708, `Pact with ${FACTIONS[this.save.pact].name}`, {
+          fontFamily: FONT,
+          fontSize: '12px',
+          color: '#8ff6e4',
+        })
+        .setOrigin(0.5)
+        .setDepth(36);
+      return;
+    }
+    new UiButton(this, VIEW_W / 2, 708, 280, 32, `PACT: ${FACTIONS[partner].name}`, FACTIONS[partner].color, () => {
+      writeProgress({ ...this.save, pact: partner, funds: this.save.funds + 40 });
+      this.scene.restart({ focus: this.pos });
+    }, { fontSize: 11, depth: 36 });
   }
 
   private openSettings(): void {

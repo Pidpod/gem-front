@@ -119,6 +119,15 @@ export class Board {
     return this.resolving;
   }
 
+  /** Plays the suggested swap. Used by Yoga Focus and the satellite scan. */
+  playFocusMove(): boolean {
+    if (this.resolving || this.suspended) return false;
+    const move = this.hint();
+    if (!move) return false;
+    void this.trySwap(move.a, move.b);
+    return true;
+  }
+
   hint(): { a: Pos; b: Pos } | null {
     if (this.resolving) return null;
     return suggestMove(this.grid);

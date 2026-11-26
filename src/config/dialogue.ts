@@ -1,6 +1,6 @@
 import type { CommanderId } from './commanders';
 
-export type PortraitId = 'mira' | 'holt' | 'ivo' | 'vesper' | 'sera';
+export type PortraitId = 'mira' | 'holt' | 'ivo' | 'vesper' | 'sera' | 'rump' | 'xin' | 'pootin' | 'modhi' | 'khaboom' | 'kimfun' | 'mustard';
 
 export interface DialogueLine {
   speaker: string;
@@ -9,7 +9,7 @@ export interface DialogueLine {
   /** Shown only when this commander is the one in the field. */
   lead?: CommanderId;
   /** Shown only for that army. Shared lines omit this. */
-  faction?: 'azure' | 'crimson';
+  faction?: 'azure' | 'crimson' | 'frost';
 }
 
 export interface DialogueDef {
@@ -81,6 +81,24 @@ export const DIALOGUES: DialogueDef[] = [
         speaker: 'Ivo',
         portrait: 'ivo',
         text: 'Coil towers on the pads. We march until those domes go dark.',
+      },
+      {
+        faction: 'azure',
+        speaker: 'Rump',
+        portrait: 'rump',
+        text: 'Tremendous wall. Huge wall. Nobody builds bases better than me.',
+      },
+      {
+        faction: 'crimson',
+        speaker: 'Xin',
+        portrait: 'xin',
+        text: 'Have a little honey. The long plan is sweeter than a rush.',
+      },
+      {
+        faction: 'frost',
+        speaker: 'Pootin',
+        portrait: 'pootin',
+        text: 'Sit. The table has twelve more chairs. The bear is faster than the argument.',
       },
     ],
   },
@@ -250,7 +268,7 @@ export function dialogueById(id: string): DialogueDef | undefined {
   return DIALOGUES.find((entry) => entry.id === id);
 }
 
-export function linesFor(id: string, commander: CommanderId, faction: 'azure' | 'crimson' = 'azure'): DialogueLine[] {
+export function linesFor(id: string, commander: CommanderId, faction: 'azure' | 'crimson' | 'frost' = 'azure'): DialogueLine[] {
   const def = dialogueById(id);
   if (!def) return [];
   return def.lines.filter((line) => (!line.lead || line.lead === commander) && (!line.faction || line.faction === faction));
