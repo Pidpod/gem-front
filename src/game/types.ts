@@ -2,17 +2,19 @@ export type Rng = () => number;
 
 export type Side = 'player' | 'enemy';
 
-export type GemColor = 'credit' | 'infantry' | 'armor' | 'repair' | 'super';
+export type GemColor = 'credit' | 'infantry' | 'tank' | 'heli' | 'super';
 
 export type Special = 'none' | 'lineRow' | 'lineCol' | 'bomb';
 
-export type UnitKind = 'infantry' | 'tank' | 'rocket' | 'heavy' | 'artillery';
+export type UnitKind = 'infantry' | 'tank' | 'heli' | 'medic' | 'rocket' | 'heavy' | 'artillery';
 
-export type ShopKind = 'rocket' | 'heavy' | 'artillery';
+export type StrikeKind = 'barrage' | 'shell' | 'missiles';
+
+export type ShopKind = 'medic' | 'repair' | 'heavy';
 
 export type Outcome = 'play' | 'win' | 'lose';
 
-export const GEM_COLORS: GemColor[] = ['credit', 'infantry', 'armor', 'repair', 'super'];
+export const GEM_COLORS: GemColor[] = ['credit', 'infantry', 'tank', 'heli', 'super'];
 
 export interface Cell {
   id: number;

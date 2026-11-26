@@ -54,10 +54,10 @@ describe('match-3', () => {
   it('ignores pairs and finds a line of three', () => {
     const grid = checkerGrid();
     assert.equal(findRuns(grid).length, 0);
-    cell(grid, 2, 2).color = 'armor';
-    cell(grid, 2, 3).color = 'armor';
+    cell(grid, 2, 2).color = 'tank';
+    cell(grid, 2, 3).color = 'tank';
     assert.equal(findRuns(grid).length, 0);
-    cell(grid, 2, 4).color = 'armor';
+    cell(grid, 2, 4).color = 'tank';
     const runs = findRuns(grid);
     assert.equal(runs.length, 1);
     assert.equal(runs[0]?.cells.length, 3);
@@ -65,7 +65,7 @@ describe('match-3', () => {
 
   it('turns a match of 4 into a row-clear gem and a match of 5 into a color bomb', () => {
     const four = checkerGrid();
-    for (let c = 2; c <= 5; c++) cell(four, 4, c).color = 'repair';
+    for (let c = 2; c <= 5; c++) cell(four, 4, c).color = 'heli';
     const line = resolveStep(four, { prefer: [{ r: 4, c: 3 }], rng: () => 0.2 });
     assert.ok(line);
     assert.equal(line.transforms.length, 1);
@@ -74,7 +74,7 @@ describe('match-3', () => {
     const lineId = line.transforms[0]?.id ?? -1;
     const kept = four.flat().find((gem) => gem?.id === lineId);
     assert.equal(kept?.special, 'lineRow');
-    assert.equal(kept?.color, 'repair');
+    assert.equal(kept?.color, 'heli');
 
     const five = checkerGrid();
     for (let c = 1; c <= 5; c++) cell(five, 6, c).color = 'super';
@@ -95,13 +95,13 @@ describe('match-3', () => {
 
     const bombs = checkerGrid();
     const ids = [cell(bombs, 0, 0), cell(bombs, 1, 2), cell(bombs, 4, 5), cell(bombs, 7, 3)].map((gem) => {
-      gem.color = 'armor';
+      gem.color = 'tank';
       return gem.id;
     });
     cell(bombs, 0, 0).special = 'bomb';
     const blown = resolveStep(bombs, {
       activate: [{ r: 0, c: 0 }],
-      bombTargets: new Map([['0:0', 'armor']]),
+      bombTargets: new Map([['0:0', 'tank']]),
       rng: () => 0.3,
     });
     assert.ok(blown);
@@ -135,19 +135,19 @@ describe('match-3', () => {
 
   it('cascades when a falling gem completes a new line', () => {
     const grid = checkerGrid();
-    cell(grid, 4, 3).color = 'armor';
-    cell(grid, 5, 3).color = 'repair';
-    cell(grid, 5, 4).color = 'repair';
-    cell(grid, 5, 5).color = 'repair';
-    cell(grid, 6, 3).color = 'armor';
-    cell(grid, 7, 3).color = 'armor';
+    cell(grid, 4, 3).color = 'tank';
+    cell(grid, 5, 3).color = 'heli';
+    cell(grid, 5, 4).color = 'heli';
+    cell(grid, 5, 5).color = 'heli';
+    cell(grid, 6, 3).color = 'tank';
+    cell(grid, 7, 3).color = 'tank';
     assert.equal(findRuns(grid).length, 1);
     const first = resolveStep(grid, { rng: () => 0.15 });
     assert.ok(first);
-    assert.equal(countColor(first.cleared, 'repair'), 3);
+    assert.equal(countColor(first.cleared, 'heli'), 3);
     const second = resolveStep(grid, { rng: () => 0.15 });
     assert.ok(second);
-    assert.ok(countColor(second.cleared, 'armor') >= 3);
+    assert.ok(countColor(second.cleared, 'tank') >= 3);
   });
 
   it('rejects a swap that does not match and accepts one that does', () => {
@@ -173,7 +173,7 @@ describe('match-3', () => {
     const quiet = checkerGrid();
     for (let r = 0; r < quiet.length; r++) {
       for (let c = 0; c < (quiet[0]?.length ?? 0); c++) {
-        const colors: GemColor[] = ['credit', 'infantry', 'armor', 'repair', 'super'];
+        const colors: GemColor[] = ['credit', 'infantry', 'tank', 'heli', 'super'];
         cell(quiet, r, c).color = colors[(c + r * 2) % colors.length] ?? 'credit';
         cell(quiet, r, c).special = 'none';
       }
@@ -200,6 +200,43 @@ describe('match-3', () => {
     assert.deepEqual(first.spawns, [{ kind: 'infantry', count: 1 }]);
     const chained = rewardForStep(step, 3);
     assert.ok((chained.spawns[0]?.count ?? 0) >= 2);
+    assert.deepEqual(first.strikes, []);
+    assert.equal(first.spawns.some((spawn) => spawn.kind === 'medic'), false);
+  });
+
+  it('sends a medic with a match-4 of infantry and on a green cascade', () => {
+    const four = [0, 1, 2, 3].map((c) => ({
+      pos: { r: 0, c },
+      cell: { id: c + 1, color: 'infantry' as const, special: 'none' as const },
+    }));
+    const match4 = rewardForStep({ cleared: four, transforms: [], falls: [] }, 1);
+    assert.equal(match4.spawns.some((spawn) => spawn.kind === 'medic'), true);
+    const cascade = rewardForStep(
+      {
+        cleared: four.slice(0, 3),
+        transforms: [],
+        falls: [],
+      },
+      2,
+    );
+    assert.equal(cascade.spawns.some((spawn) => spawn.kind === 'medic'), true);
+  });
+
+  it('calls a tank artillery strike on a match of 5', () => {
+    const cleared = [0, 1, 2, 3].map((c) => ({
+      pos: { r: 1, c },
+      cell: { id: c + 1, color: 'tank' as const, special: 'none' as const },
+    }));
+    const reward = rewardForStep(
+      {
+        cleared,
+        transforms: [{ pos: { r: 1, c: 4 }, special: 'bomb', id: 9, color: 'tank' }],
+        falls: [],
+      },
+      1,
+    );
+    assert.deepEqual(reward.strikes, ['shell']);
+    assert.ok(reward.spawns.some((spawn) => spawn.kind === 'tank'));
   });
 
   it('settles random swaps into a full, movable board', () => {

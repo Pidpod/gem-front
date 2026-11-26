@@ -1,3 +1,5 @@
+import type { StrikeKind } from '../game/types';
+
 const MUTE_KEY = 'gem-front-muted';
 
 class Sfx {
@@ -5,6 +7,7 @@ class Sfx {
   private ctx: AudioContext | null = null;
   private unlocked = false;
   private lastHit = 0;
+  private lastHeal = 0;
 
   constructor() {
     try {
@@ -21,7 +24,17 @@ class Sfx {
     } catch {
       /* private mode */
     }
+    if (this.muted) vibrateStop();
     return this.muted;
+  }
+
+  vibrate(pattern: number | number[]): void {
+    if (this.muted) return;
+    try {
+      navigator.vibrate?.(pattern);
+    } catch {
+      /* some browsers throw if vibration is blocked */
+    }
   }
 
   async unlock(): Promise<void> {
@@ -55,6 +68,28 @@ class Sfx {
     const base = 480 + Math.min(combo, 6) * 55;
     this.tone(base, 0.09, 'sine', 0.05);
     this.tone(base * 1.5, 0.12, 'triangle', big ? 0.05 : 0.03, undefined, 0.05);
+    if (combo >= 2) this.tone(base * 2, 0.14, 'square', 0.02, undefined, 0.08);
+  }
+
+  strike(kind: StrikeKind): void {
+    if (kind === 'shell') {
+      this.tone(680, 0.34, 'sawtooth', 0.04, 120);
+      this.noise(0.32, 0.16, 420, 0.28);
+      this.tone(70, 0.4, 'sine', 0.06, 40, 0.3);
+    } else if (kind === 'missiles') {
+      this.tone(420, 0.18, 'square', 0.03, 900);
+      for (let i = 0; i < 4; i++) this.noise(0.12, 0.08, 1400, 0.16 + i * 0.08);
+    } else {
+      for (let i = 0; i < 5; i++) {
+        this.tone(300 + i * 30, 0.06, 'square', 0.03, 140, i * 0.05);
+        this.noise(0.08, 0.06, 900, i * 0.05);
+      }
+    }
+  }
+
+  explosion(): void {
+    this.noise(0.22, 0.12, 700);
+    this.tone(90, 0.2, 'sine', 0.04, 40);
   }
 
   spawn(side: 'player' | 'enemy'): void {
@@ -70,7 +105,11 @@ class Sfx {
   }
 
   heal(): void {
+    const now = performance.now();
+    if (now - this.lastHeal < 90) return;
+    this.lastHeal = now;
     this.tone(520, 0.08, 'sine', 0.04, 760);
+    this.tone(780, 0.1, 'triangle', 0.03, undefined, 0.04);
   }
 
   superBlast(): void {
@@ -88,6 +127,34 @@ class Sfx {
 
   lose(): void {
     [392, 311, 247, 196].forEach((freq, i) => this.tone(freq, 0.2, 'triangle', 0.05, undefined, i * 0.14));
+  }
+
+  private noise(dur: number, gain: number, cutoff: number, delay = 0): void {
+    if (this.muted || !this.ctx || !this.unlocked) return;
+    const ctx = this.ctx;
+    try {
+      const length = Math.max(1, Math.floor(ctx.sampleRate * dur));
+      const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < length; i++) {
+        const env = 1 - i / length;
+        data[i] = (Math.random() * 2 - 1) * env * env;
+      }
+      const src = ctx.createBufferSource();
+      src.buffer = buffer;
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(cutoff, ctx.currentTime + delay);
+      const amp = ctx.createGain();
+      amp.gain.setValueAtTime(gain, ctx.currentTime + delay);
+      src.connect(filter);
+      filter.connect(amp);
+      amp.connect(ctx.destination);
+      src.start(ctx.currentTime + delay);
+      src.stop(ctx.currentTime + delay + dur + 0.02);
+    } catch {
+      /* ignore audio glitches */
+    }
   }
 
   private tone(
@@ -116,6 +183,14 @@ class Sfx {
     } catch {
       /* ignore audio glitches */
     }
+  }
+}
+
+function vibrateStop(): void {
+  try {
+    navigator.vibrate?.(0);
+  } catch {
+    /* ignore */
   }
 }
 

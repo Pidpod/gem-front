@@ -20,7 +20,7 @@ export interface FallMove {
 
 export interface ClearStep {
   cleared: { pos: Pos; cell: Cell }[];
-  transforms: { pos: Pos; special: Special; id: number }[];
+  transforms: { pos: Pos; special: Special; id: number; color: GemColor }[];
   falls: FallMove[];
 }
 
@@ -305,7 +305,7 @@ export function resolveStep(grid: Grid, input: ResolveInput = {}): ClearStep | n
   }
   const transforms = plan.transforms.map((entry) => {
     const cell = grid[entry.pos.r]?.[entry.pos.c];
-    return { pos: entry.pos, special: entry.special, id: cell?.id ?? -1 };
+    return { pos: entry.pos, special: entry.special, id: cell?.id ?? -1, color: cell?.color ?? 'credit' };
   });
 
   for (const entry of plan.transforms) {

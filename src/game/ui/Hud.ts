@@ -95,7 +95,7 @@ export class Hud {
         COMMAND.buttonW,
         COMMAND.buttonH,
         item.name,
-        index === 0 ? 0x8d3d4a : index === 1 ? 0x2d6d86 : 0x8a6230,
+        item.kind === 'medic' ? 0x2f8a4e : item.kind === 'repair' ? 0x1f7a78 : 0x8a6230,
         () => handlers.onBuy(item.kind),
         { sub: `${item.cost}  ${item.blurb}`, fontSize: 15 },
       );
@@ -157,9 +157,9 @@ export class Hud {
   private drawLegend(scene: Phaser.Scene): void {
     const items = [
       { color: GEM_HEX.credit, label: 'credits' },
-      { color: GEM_HEX.infantry, label: 'infantry' },
-      { color: GEM_HEX.armor, label: 'tanks' },
-      { color: GEM_HEX.repair, label: 'repair' },
+      { color: GEM_HEX.infantry, label: 'troops' },
+      { color: GEM_HEX.tank, label: 'tanks' },
+      { color: GEM_HEX.heli, label: 'helis' },
       { color: GEM_HEX.super, label: 'super' },
     ];
     let x = 16;

@@ -22,6 +22,7 @@ export type BattleEvent =
   | { type: 'attack'; x1: number; y1: number; x2: number; y2: number; side: Side; amount: number }
   | { type: 'dead'; id: number; x: number; y: number; side: Side; kind: UnitKind }
   | { type: 'spawn'; id: number; side: Side; kind: UnitKind }
+  | { type: 'heal'; x1: number; y1: number; x2: number; y2: number; amount: number }
   | { type: 'base'; side: Side; amount: number }
   | { type: 'super' }
   | { type: 'end'; result: 'win' | 'lose' };
@@ -68,20 +69,41 @@ export class BattleSim {
     const hits: PendingHit[] = [];
 
     for (const unit of living) {
+      if (unit.kind === 'medic') {
+        this.guideMedic(unit, living, dt, events);
+        continue;
+      }
       const foes = living.filter((other) => other.side !== unit.side && other.hp > 0);
-      const foe = nearestInRange(unit, foes);
       const baseSide: Side = unit.side === 'player' ? 'enemy' : 'player';
       const baseX = baseSide === 'enemy' ? LANE.enemyX : LANE.playerX;
       const baseDist = Math.abs(unit.x - baseX);
-      if (foe) {
-        if (trySwing(unit, dt)) hits.push({ attacker: unit, target: foe });
-      } else if (baseDist <= unit.range + LANE.baseRadius) {
-        if (trySwing(unit, dt)) hits.push({ attacker: unit, target: baseSide });
+      const baseIn = baseDist <= unit.range + LANE.baseRadius;
+      if (unit.kind === 'heli') {
+        const air = nearestInRange(
+          unit,
+          foes.filter((other) => other.kind === 'heli'),
+        );
+        if (air) {
+          if (trySwing(unit, dt)) hits.push({ attacker: unit, target: air });
+        } else if (baseIn) {
+          if (trySwing(unit, dt)) hits.push({ attacker: unit, target: baseSide });
+        } else {
+          stepForward(unit, dt);
+          const ground = nearestInRange(
+            unit,
+            foes.filter((other) => other.kind !== 'heli'),
+          );
+          if (ground && trySwing(unit, dt)) hits.push({ attacker: unit, target: ground });
+        }
       } else {
-        const dir = unit.side === 'player' ? 1 : -1;
-        const minX = LANE.playerX + LANE.baseRadius * 0.35;
-        const maxX = LANE.enemyX - LANE.baseRadius * 0.35;
-        unit.x = clamp(unit.x + dir * unit.speed * dt, minX, maxX);
+        const foe = nearestInRange(unit, foes);
+        if (foe) {
+          if (trySwing(unit, dt)) hits.push({ attacker: unit, target: foe });
+        } else if (baseIn) {
+          if (trySwing(unit, dt)) hits.push({ attacker: unit, target: baseSide });
+        } else {
+          stepForward(unit, dt);
+        }
       }
     }
 
@@ -134,12 +156,13 @@ export class BattleSim {
     const x = side === 'player' ? baseX + spread : baseX - spread;
     const slot = LANES_Y[this.spawnSerial % LANES_Y.length] ?? 0;
     this.spawnSerial += 1;
+    const flying = kind === 'heli';
     const unit: SimUnit = {
       id: nextUnitId++,
       side,
       kind,
       x,
-      y: LANE.groundY - 18 + slot,
+      y: flying ? LANE.groundY - 62 + (this.spawnSerial % 2) * 8 : LANE.groundY - 16 + slot,
       hp: stat.maxHp,
       maxHp: stat.maxHp,
       cooldown: 0.12,
@@ -151,6 +174,60 @@ export class BattleSim {
     };
     this.units.push(unit);
     return { type: 'spawn', id: unit.id, side, kind };
+  }
+
+  private guideMedic(unit: SimUnit, living: SimUnit[], dt: number, events: BattleEvent[]): void {
+    const allies = living.filter((other) => other.side === unit.side && other.id !== unit.id && other.hp > 0);
+    const wounded = allies
+      .filter((other) => other.hp < other.maxHp - 0.5)
+      .sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp);
+    const patient = wounded.find((other) => Math.abs(other.x - unit.x) <= unit.range + other.radius);
+    if (patient && trySwing(unit, dt)) {
+      const amount = Math.min(BALANCE.medic.healAmount, patient.maxHp - patient.hp);
+      patient.hp += amount;
+      events.push({ type: 'heal', x1: unit.x, y1: unit.y, x2: patient.x, y2: patient.y, amount });
+      return;
+    }
+    const ground = allies.filter((other) => other.kind !== 'heli');
+    const anchor = ground.length > 0 ? ground : allies;
+    let front = unit.side === 'player' ? LANE.playerX + 36 : LANE.enemyX - 36;
+    for (const ally of anchor) {
+      front = unit.side === 'player' ? Math.max(front, ally.x) : Math.min(front, ally.x);
+    }
+    let goal = unit.side === 'player' ? front - BALANCE.medic.followGap : front + BALANCE.medic.followGap;
+    const focus = wounded[0];
+    if (focus) goal = unit.side === 'player' ? Math.min(focus.x - 8, goal) : Math.max(focus.x + 8, goal);
+    const minX = LANE.playerX + 20;
+    const maxX = LANE.enemyX - 20;
+    if (Math.abs(goal - unit.x) > 3) {
+      const dir = goal > unit.x ? 1 : -1;
+      unit.x = clamp(unit.x + dir * unit.speed * dt, minX, maxX);
+    }
+    if (unit.side === 'player') unit.x = Math.min(unit.x, front - 6);
+    else unit.x = Math.max(unit.x, front + 6);
+  }
+
+  /** Area hit used by match-5 special attacks. */
+  areaStrike(attacker: Side, x: number, radius: number, damage: number, baseDamage: number): BattleEvent[] {
+    if (this.outcome !== 'play') return [];
+    const foe: Side = attacker === 'player' ? 'enemy' : 'player';
+    for (const unit of this.units) {
+      if (unit.side !== foe) continue;
+      if (Math.abs(unit.x - x) <= radius + unit.radius) unit.hp -= damage;
+    }
+    const events: BattleEvent[] = [];
+    if (baseDamage > 0) {
+      const baseX = foe === 'enemy' ? LANE.enemyX : LANE.playerX;
+      if (Math.abs(baseX - x) <= radius + LANE.baseRadius + 24) {
+        if (foe === 'enemy') this.enemyHp -= baseDamage;
+        else this.playerHp -= baseDamage;
+        events.push({ type: 'base', side: foe, amount: baseDamage });
+      }
+    }
+    events.push(...this.reap());
+    const end = this.checkOutcome();
+    if (end) events.push(end);
+    return events;
   }
 
   heal(amount: number): number {
@@ -201,6 +278,13 @@ export class BattleSim {
     }
     return null;
   }
+}
+
+function stepForward(unit: SimUnit, dt: number): void {
+  const dir = unit.side === 'player' ? 1 : -1;
+  const minX = LANE.playerX + LANE.baseRadius * 0.35;
+  const maxX = LANE.enemyX - LANE.baseRadius * 0.35;
+  unit.x = clamp(unit.x + dir * unit.speed * dt, minX, maxX);
 }
 
 function trySwing(unit: SimUnit, dt: number): boolean {

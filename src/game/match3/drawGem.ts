@@ -42,18 +42,21 @@ function drawIcon(g: Phaser.GameObjects.Graphics, color: GemColor, radius: numbe
     return;
   }
   if (color === 'infantry') {
-    g.fillTriangle(-radius * 0.28, radius * 0.2, radius * 0.28, radius * 0.2, 0, -radius * 0.28);
-    g.fillCircle(0, -radius * 0.34, radius * 0.12);
+    g.fillCircle(0, -radius * 0.28, radius * 0.14);
+    g.fillRoundedRect(-radius * 0.16, -radius * 0.1, radius * 0.32, radius * 0.36, 2);
+    g.fillRect(radius * 0.08, -radius * 0.02, radius * 0.34, radius * 0.08);
     return;
   }
-  if (color === 'armor') {
-    g.fillRoundedRect(-radius * 0.34, -radius * 0.16, radius * 0.68, radius * 0.36, 2);
-    g.fillRect(radius * 0.1, -radius * 0.08, radius * 0.32, radius * 0.12);
+  if (color === 'tank') {
+    g.fillRoundedRect(-radius * 0.38, -radius * 0.08, radius * 0.7, radius * 0.32, 2);
+    g.fillRoundedRect(-radius * 0.12, -radius * 0.28, radius * 0.3, radius * 0.22, 2);
+    g.fillRect(radius * 0.12, -radius * 0.2, radius * 0.36, radius * 0.1);
     return;
   }
-  if (color === 'repair') {
-    g.fillRoundedRect(-radius * 0.1, -radius * 0.34, radius * 0.2, radius * 0.68, 1);
-    g.fillRoundedRect(-radius * 0.34, -radius * 0.1, radius * 0.68, radius * 0.2, 1);
+  if (color === 'heli') {
+    g.fillRect(-radius * 0.42, -radius * 0.34, radius * 0.84, radius * 0.08);
+    g.fillEllipse(0, radius * 0.02, radius * 0.46, radius * 0.28);
+    g.fillRect(radius * 0.16, -radius * 0.02, radius * 0.28, radius * 0.08);
     return;
   }
   fillStar(g, 0, 1, radius * 0.32, ink);
