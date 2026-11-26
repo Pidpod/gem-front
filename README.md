@@ -31,7 +31,7 @@ Preview serves the static `dist/` site at [http://localhost:4173/gem-front/](htt
 - If the board has no moves, it reshuffles.
 - Gold grants credits. Green sends infantry. Red sends tanks. Blue sends helicopters that fly over ground units. Purple fills the superweapon.
 - Big green matches (match 4, or a cascade) send a medic along with the infantry. Medics walk behind friendlies and heal them. Keys `1` `2` `3` buy a medic, base repair, and a heavy. `F` or Space fires the superweapon. An infantry match-5 barrage also patches the base.
-- Units walk forward, fight enemies they meet, and damage a base when they reach it. The enemy sends stronger waves over time.
+- Campaign has 10 levels. A win pays war funds and stars, and Next unlocks the following level. Spend funds in Upgrades between battles. Settings on the map can reset progress.
 - `H` opens how-to-play. `M` toggles sound. On the result screen, Enter plays again and Esc returns to the title.
 
 ## Balance
