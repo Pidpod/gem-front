@@ -2,7 +2,9 @@ import { sfx } from '../../audio/sfx';
 import { BALANCE, comboMultiplier, SHOP, STRIKE_LABEL, UNIT_NAME } from '../../config/balance';
 import { HOW_TO_LINES } from '../copy';
 import { boardGeom, commandButtonX, COMMAND, LANE, VIEW_H, VIEW_W } from '../layout';
+import { tuningForLevel } from '../loadout';
 import { Board, type GemPop } from '../match3/Board';
+import { loadProgress } from '../progress';
 import type { MatchReward } from '../match3/rewards';
 import { Battlefield } from '../rts/Battlefield';
 import { FONT, GEM_CSS, GEM_HEX, INK } from '../theme';
@@ -27,9 +29,17 @@ export class GameScene extends Phaser.Scene {
   private floatSlot = 0;
   private frozenUntil = 0;
   private slowUntil = 0;
+  private levelId = 1;
+  private chargeMul = 1;
 
   constructor() {
     super('game');
+  }
+
+  init(data?: { level?: number }): void {
+    const save = loadProgress();
+    const requested = data?.level && data.level > 0 ? data.level : save.unlocked;
+    this.levelId = Math.max(1, Math.min(requested, save.unlocked));
   }
 
   create(): void {
@@ -45,7 +55,9 @@ export class GameScene extends Phaser.Scene {
     this.helpLayer = null;
 
     addBackdrop(this);
-    this.battle = new Battlefield(this);
+    const tuning = tuningForLevel(this.levelId);
+    this.chargeMul = tuning.superCharge;
+    this.battle = new Battlefield(this, Math.random, tuning);
     this.board = new Board(this, (reward, pops) => this.applyReward(reward, pops));
     this.hud = new Hud(this, {
       onBuy: (kind) => this.buy(kind),
@@ -102,7 +114,10 @@ export class GameScene extends Phaser.Scene {
     this.stats.creditsEarned += reward.credits;
     this.stats.gemsCleared += reward.cleared;
     this.stats.bestCombo = Math.max(this.stats.bestCombo, reward.combo);
-    if (reward.super > 0) this.superCharge = Math.min(BALANCE.superMax, this.superCharge + reward.super);
+    if (reward.super > 0) {
+      const gain = Math.max(1, Math.round(reward.super * this.chargeMul));
+      this.superCharge = Math.min(BALANCE.superMax, this.superCharge + gain);
+    }
     for (const spawn of reward.spawns) {
       for (let i = 0; i < spawn.count; i++) this.battle.queueSpawn(spawn.kind);
       this.stats.unitsSpawned += spawn.count;
@@ -242,13 +257,16 @@ export class GameScene extends Phaser.Scene {
     if (result === 'win') sfx.win();
     else sfx.lose();
     this.battle.announce(result === 'win' ? 'VICTORY' : 'DEFEAT');
-    this.time.delayedCall(900, () => {
+    window.setTimeout(() => {
       if (!this.scene.isActive()) return;
       this.scene.start('end', {
         result,
         stats: { ...this.stats, elapsed: this.battle.elapsed },
+        levelId: this.levelId,
+        playerHp: this.battle.playerHp,
+        playerMax: this.battle.playerMax,
       });
-    });
+    }, 900);
   }
 
   private exposeDebug(): void {
@@ -278,6 +296,7 @@ export class GameScene extends Phaser.Scene {
         help: this.helpOpen,
         units: this.battle.unitCounts,
       }),
+      win: () => this.finish('win'),
       strike: (kind: StrikeKind) => {
         sfx.strike(kind);
         this.battle.playStrike(kind);

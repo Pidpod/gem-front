@@ -1,5 +1,7 @@
 import { attackMultiplier, BALANCE, enemyInterval, rollEnemyKind } from '../../config/balance';
+import { rollMix } from '../../config/levels';
 import { LANE, LANES_Y } from '../layout';
+import { defaultTuning, type Tuning } from '../loadout';
 import type { Outcome, Rng, Side, UnitKind } from '../types';
 
 export interface SimUnit {
@@ -36,18 +38,25 @@ let nextUnitId = 1;
 
 export class BattleSim {
   units: SimUnit[] = [];
-  playerHp = BALANCE.bases.playerHp;
-  enemyHp = BALANCE.bases.enemyHp;
-  readonly playerMax = BALANCE.bases.playerHp;
-  readonly enemyMax = BALANCE.bases.enemyHp;
+  playerHp: number;
+  enemyHp: number;
+  readonly playerMax: number;
+  readonly enemyMax: number;
   elapsed = 0;
   outcome: Outcome = 'play';
-  private spawnTimer = BALANCE.enemy.firstDelay;
+  private spawnTimer: number;
   private spawnSerial = 0;
   private readonly rng: Rng;
+  private readonly tuning: Tuning;
 
-  constructor(rng: Rng = Math.random) {
+  constructor(rng: Rng = Math.random, tuning: Tuning = defaultTuning()) {
     this.rng = rng;
+    this.tuning = tuning;
+    this.playerMax = tuning.playerMax;
+    this.enemyMax = tuning.enemyMax;
+    this.playerHp = tuning.playerMax;
+    this.enemyHp = tuning.enemyMax;
+    this.spawnTimer = tuning.firstDelay;
   }
 
   update(dt: number): BattleEvent[] {
@@ -56,13 +65,13 @@ export class BattleSim {
     this.elapsed += dt;
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
-      const spawned = this.spawn('enemy', rollEnemyKind(this.elapsed, this.rng));
+      const spawned = this.spawn('enemy', this.rollEnemy());
       if (spawned) events.push(spawned);
       if (this.elapsed > 18) {
-        const escort = this.spawn('enemy', rollEnemyKind(this.elapsed, this.rng));
+        const escort = this.spawn('enemy', this.rollEnemy());
         if (escort) events.push(escort);
       }
-      this.spawnTimer = enemyInterval(this.elapsed);
+      this.spawnTimer = enemyInterval(this.elapsed) * this.tuning.intervalScale;
     }
 
     const living = this.units.filter((unit) => unit.hp > 0);
@@ -150,6 +159,8 @@ export class BattleSim {
     const friendly = this.units.filter((unit) => unit.side === side).length;
     if (friendly >= BALANCE.fieldCap) return null;
     const stat = BALANCE.units[kind];
+    const hpScale = side === 'enemy' ? this.tuning.enemyHpScale : (this.tuning.hpMul[kind] ?? 1);
+    const dmgScale = side === 'enemy' ? this.tuning.enemyDmgScale : (this.tuning.dmgMul[kind] ?? 1);
     const baseX = side === 'player' ? LANE.playerX + LANE.spawnInset : LANE.enemyX - LANE.spawnInset;
     const crowd = this.units.filter((unit) => unit.side === side && Math.abs(unit.x - baseX) < 18).length;
     const spread = Math.min(crowd, 4) * 12;
@@ -163,13 +174,13 @@ export class BattleSim {
       kind,
       x,
       y: flying ? LANE.groundY - 62 + (this.spawnSerial % 2) * 8 : LANE.groundY - 16 + slot,
-      hp: stat.maxHp,
-      maxHp: stat.maxHp,
+      hp: Math.max(1, Math.round(stat.maxHp * hpScale)),
+      maxHp: Math.max(1, Math.round(stat.maxHp * hpScale)),
       cooldown: 0.12,
       range: stat.range,
       radius: stat.radius,
       speed: stat.speed,
-      damage: stat.damage,
+      damage: Math.max(0, Math.round(stat.damage * dmgScale)),
       interval: stat.interval,
     };
     this.units.push(unit);
@@ -183,7 +194,7 @@ export class BattleSim {
       .sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp);
     const patient = wounded.find((other) => Math.abs(other.x - unit.x) <= unit.range + other.radius);
     if (patient && trySwing(unit, dt)) {
-      const amount = Math.min(BALANCE.medic.healAmount, patient.maxHp - patient.hp);
+      const amount = Math.min(this.tuning.medicHeal, patient.maxHp - patient.hp);
       patient.hp += amount;
       events.push({ type: 'heal', x1: unit.x, y1: unit.y, x2: patient.x, y2: patient.y, amount });
       return;
@@ -240,12 +251,12 @@ export class BattleSim {
   fireSuper(): BattleEvent[] {
     if (this.outcome !== 'play') return [];
     for (const unit of this.units) {
-      if (unit.side === 'enemy') unit.hp -= BALANCE.superWeapon.unitDamage;
+      if (unit.side === 'enemy') unit.hp -= this.tuning.superUnit;
     }
-    this.enemyHp -= BALANCE.superWeapon.baseDamage;
+    this.enemyHp -= this.tuning.superBase;
     const events: BattleEvent[] = [
       { type: 'super' },
-      { type: 'base', side: 'enemy', amount: BALANCE.superWeapon.baseDamage },
+      { type: 'base', side: 'enemy', amount: this.tuning.superBase },
     ];
     events.push(...this.reap());
     const end = this.checkOutcome();
@@ -262,6 +273,11 @@ export class BattleSim {
     }
     this.units = alive;
     return events;
+  }
+
+  private rollEnemy(): UnitKind {
+    if (this.tuning.mix) return rollMix(this.tuning.mix, this.elapsed, this.rng);
+    return rollEnemyKind(this.elapsed, this.rng);
   }
 
   private checkOutcome(): BattleEvent | null {

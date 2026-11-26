@@ -1,6 +1,7 @@
 import { sfx } from '../../audio/sfx';
 import { BALANCE, STRIKE_LABEL } from '../../config/balance';
 import { installArt } from '../art/sheets';
+import { defaultTuning, type Tuning } from '../loadout';
 import { LANE, VIEW_W } from '../layout';
 import { FONT } from '../theme';
 import type { Side, StrikeKind, UnitKind } from '../types';
@@ -28,6 +29,7 @@ const LOOK: Record<UnitKind, string> = {
 export class Battlefield {
   private readonly scene: Phaser.Scene;
   private readonly sim: BattleSim;
+  private readonly tuning: Tuning;
   private readonly world: Phaser.GameObjects.Container;
   private readonly views = new Map<number, UnitView>();
   private readonly spawnQueue: UnitKind[] = [];
@@ -42,9 +44,10 @@ export class Battlefield {
   private banner: Phaser.GameObjects.Text | null = null;
   private flashRect: Phaser.GameObjects.Rectangle | null = null;
 
-  constructor(scene: Phaser.Scene, rng: () => number = Math.random) {
+  constructor(scene: Phaser.Scene, rng: () => number = Math.random, tuning: Tuning = defaultTuning()) {
     this.scene = scene;
-    this.sim = new BattleSim(rng);
+    this.tuning = tuning;
+    this.sim = new BattleSim(rng, tuning);
     installArt(scene);
     this.world = scene.add.container(0, 0).setDepth(6);
     this.clouds = scene.add.container(0, 0);
@@ -53,6 +56,7 @@ export class Battlefield {
     this.drawScenery();
     this.playerBase = this.makeBase('player');
     this.enemyBase = this.makeBase('enemy');
+    if (tuning.boss) this.enemyBase.setScale(1.85);
     const you = scene.add
       .text(LANE.playerX, LANE.top + 14, 'YOU', {
         fontFamily: FONT,
@@ -71,7 +75,7 @@ export class Battlefield {
       .setOrigin(0.5);
     this.world.add([you, foe]);
     const objective = scene.add
-      .text(VIEW_W / 2, LANE.top + 14, 'Destroy the enemy base', {
+      .text(VIEW_W / 2, LANE.top + 14, tuning.title, {
         fontFamily: FONT,
         fontSize: '13px',
         color: '#f4f1ea',
@@ -280,7 +284,8 @@ export class Battlefield {
     damage: number,
     baseDamage: number,
   ): void {
-    const events = this.sim.areaStrike(side, x, radius, damage, baseDamage);
+    const power = this.tuning.strikePower;
+    const events = this.sim.areaStrike(side, x, radius, Math.round(damage * power), Math.round(baseDamage * power));
     this.applyEvents(events);
   }
 

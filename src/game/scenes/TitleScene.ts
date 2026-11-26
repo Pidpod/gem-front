@@ -65,18 +65,21 @@ export class TitleScene extends Phaser.Scene {
       })
       .setOrigin(0, 0);
 
-    new UiButton(this, VIEW_W / 2, 770, 280, 68, 'PLAY', 0x149684, () => {
-      void sfx.unlock().then(() => this.scene.start('game'));
-    }, { fontSize: 28 });
+    new UiButton(this, VIEW_W / 2, 760, 280, 60, 'CAMPAIGN', 0x149684, () => {
+      void sfx.unlock().then(() => this.scene.start('map'));
+    }, { fontSize: 24 });
+    new UiButton(this, VIEW_W / 2, 834, 220, 48, 'UPGRADES', 0x2a3344, () => this.scene.start('upgrades'), {
+      fontSize: 16,
+    });
 
-    const mute = new UiButton(this, VIEW_W / 2, 860, 160, 44, sfx.muted ? 'SOUND OFF' : 'SOUND ON', 0x2a3344, () => {
+    const mute = new UiButton(this, VIEW_W / 2, 900, 150, 40, sfx.muted ? 'SOUND OFF' : 'SOUND ON', 0x2a3344, () => {
       const muted = sfx.toggle();
       mute.setLabel(muted ? 'SOUND OFF' : 'SOUND ON');
-    }, { fontSize: 16 });
+    }, { fontSize: 14 });
 
     this.input.keyboard?.on('keydown', (event: KeyboardEvent) => {
       if (event.repeat) return;
-      if (event.key === 'Enter' || event.key === ' ') this.scene.start('game');
+      if (event.key === 'Enter' || event.key === ' ') this.scene.start('map');
     });
 
     void this.cameras.main.fadeIn(180, 16, 19, 26);
