@@ -9,6 +9,7 @@ import {
   adjacent,
   createInitialGrid,
   ensurePlayable,
+  pasteGrid,
   resolveStep,
   samePos,
   swapActivates,
@@ -491,6 +492,39 @@ export class Board {
       for (const cell of row) if (cell?.id === id) return cell;
     }
     return null;
+  }
+
+  /** Field shuffle. Resolves false when a match is already falling. */
+  async useShuffle(): Promise<boolean> {
+    if (this.resolving || this.suspended) return false;
+    this.clearHint();
+    this.resolving = true;
+    pasteGrid(this.grid, createInitialGrid(this.rng));
+    sfx.reshuffle();
+    await this.playReshuffle();
+    if (!this.scene.sys.isActive()) return true;
+    this.resolving = false;
+    this.idle = 0;
+    return true;
+  }
+
+  /** Plants a color bomb on a random plain gem. */
+  plantBomb(): boolean {
+    if (this.resolving || this.suspended) return false;
+    const spots: { r: number; c: number }[] = [];
+    for (let r = 0; r < this.geom.rows; r++) {
+      for (let c = 0; c < this.geom.cols; c++) {
+        const cell = this.grid[r]?.[c];
+        if (cell && cell.special === 'none') spots.push({ r, c });
+      }
+    }
+    if (spots.length === 0) return false;
+    const spot = spots[Math.floor(this.rng() * spots.length)];
+    const cell = spot ? this.grid[spot.r]?.[spot.c] : undefined;
+    if (!cell) return false;
+    cell.special = 'bomb';
+    this.syncFromGrid();
+    return true;
   }
 
   private redrawRings(): void {

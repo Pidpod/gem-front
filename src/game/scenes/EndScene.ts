@@ -109,9 +109,18 @@ export class EndScene extends Phaser.Scene {
       })
       .setOrigin(0.5, 0);
 
-    if (won && this.hasNext) {
+    if (won) {
+      if (this.hasNext) {
+        this.add
+          .text(VIEW_W / 2, 520, 'New roads are open.', {
+            fontFamily: FONT,
+            fontSize: '15px',
+            color: MUTED,
+          })
+          .setOrigin(0.5);
+      }
       new UiButton(this, VIEW_W / 2, 560, 280, 64, 'NEXT', 0x149684, () => {
-        this.scene.start('game', { level: this.levelId + 1 });
+        this.scene.start('map', { focus: this.levelId });
       }, { fontSize: 26 });
     } else if (!won) {
       new UiButton(this, VIEW_W / 2, 500, 280, 64, 'RETRY', 0xc4473a, () => {
@@ -119,7 +128,7 @@ export class EndScene extends Phaser.Scene {
       }, { fontSize: 26 });
     }
     const lower = won ? 650 : 590;
-    new UiButton(this, VIEW_W / 2, lower, 240, 52, 'UPGRADES', 0x2a3344, () => this.scene.start('upgrades'), {
+    new UiButton(this, VIEW_W / 2, lower, 240, 52, 'HQ', 0x2a3344, () => this.scene.start('hq'), {
       fontSize: 18,
     });
     new UiButton(this, VIEW_W / 2, lower + 70, 240, 52, 'MAP', 0x2a3344, () => this.scene.start('map'), {
@@ -129,9 +138,8 @@ export class EndScene extends Phaser.Scene {
     this.input.keyboard?.on('keydown', (event: KeyboardEvent) => {
       if (event.repeat) return;
       if (event.key === 'Enter' || event.key === ' ') {
-        if (won && this.hasNext) this.scene.start('game', { level: this.levelId + 1 });
-        else if (!won) this.scene.start('game', { level: this.levelId });
-        else this.scene.start('map');
+        if (won) this.scene.start('map', { focus: this.levelId });
+        else this.scene.start('game', { level: this.levelId });
       } else if (event.key === 'Escape') this.scene.start('map');
     });
   }

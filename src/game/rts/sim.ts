@@ -87,22 +87,23 @@ export class BattleSim {
       const baseX = baseSide === 'enemy' ? LANE.enemyX : LANE.playerX;
       const baseDist = Math.abs(unit.x - baseX);
       const baseIn = baseDist <= unit.range + LANE.baseRadius;
-      if (unit.kind === 'heli') {
-        const air = nearestInRange(
+      if (unit.kind === 'heli' || unit.kind === 'ship') {
+        const lane = unit.kind;
+        const blocked = nearestInRange(
           unit,
-          foes.filter((other) => other.kind === 'heli'),
+          foes.filter((other) => other.kind === lane),
         );
-        if (air) {
-          if (trySwing(unit, dt)) hits.push({ attacker: unit, target: air });
+        if (blocked) {
+          if (trySwing(unit, dt)) hits.push({ attacker: unit, target: blocked });
         } else if (baseIn) {
           if (trySwing(unit, dt)) hits.push({ attacker: unit, target: baseSide });
         } else {
           stepForward(unit, dt);
-          const ground = nearestInRange(
+          const below = nearestInRange(
             unit,
-            foes.filter((other) => other.kind !== 'heli'),
+            foes.filter((other) => other.kind !== lane),
           );
-          if (ground && trySwing(unit, dt)) hits.push({ attacker: unit, target: ground });
+          if (below && trySwing(unit, dt)) hits.push({ attacker: unit, target: below });
         }
       } else {
         const foe = nearestInRange(unit, foes);
@@ -168,12 +169,13 @@ export class BattleSim {
     const slot = LANES_Y[this.spawnSerial % LANES_Y.length] ?? 0;
     this.spawnSerial += 1;
     const flying = kind === 'heli';
+    const naval = kind === 'ship';
     const unit: SimUnit = {
       id: nextUnitId++,
       side,
       kind,
       x,
-      y: flying ? LANE.groundY - 62 + (this.spawnSerial % 2) * 8 : LANE.groundY - 16 + slot,
+      y: flying ? LANE.groundY - 62 + (this.spawnSerial % 2) * 8 : naval ? LANE.bottom - 16 : LANE.groundY - 16 + slot,
       hp: Math.max(1, Math.round(stat.maxHp * hpScale)),
       maxHp: Math.max(1, Math.round(stat.maxHp * hpScale)),
       cooldown: 0.12,
@@ -199,7 +201,7 @@ export class BattleSim {
       events.push({ type: 'heal', x1: unit.x, y1: unit.y, x2: patient.x, y2: patient.y, amount });
       return;
     }
-    const ground = allies.filter((other) => other.kind !== 'heli');
+    const ground = allies.filter((other) => other.kind !== 'heli' && other.kind !== 'ship');
     const anchor = ground.length > 0 ? ground : allies;
     let front = unit.side === 'player' ? LANE.playerX + 36 : LANE.enemyX - 36;
     for (const ally of anchor) {

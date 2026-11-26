@@ -31,8 +31,10 @@ Preview serves the static `dist/` site at [http://localhost:4173/gem-front/](htt
 - If the board has no moves, it reshuffles.
 - Gold grants credits. Green sends infantry. Red sends tanks. Blue sends helicopters that fly over ground units. Purple fills the superweapon.
 - Big green matches (match 4, or a cascade) send a medic along with the infantry. Medics walk behind friendlies and heal them. Keys `1` `2` `3` buy a medic, base repair, and a heavy. `F` or Space fires the superweapon. An infantry match-5 barrage also patches the base.
-- Campaign has 10 levels. A win pays war funds and stars, and Next unlocks the following level. Spend funds in Upgrades between battles. Settings on the map can reset progress.
-- `H` opens how-to-play. `M` toggles sound. On the result screen, Enter plays again and Esc returns to the title.
+- The campaign is a liberation map. A commander walks the roads, regions flip when you win, and Next returns you to the map. Cities go from ruins to rebuilt streets. Raise barracks, a refinery, a hospital, a factory, and gem labs there.
+- Main HQ spends war funds by unit line: infantry, tanks, helicopters, ships, medical, and base restoration, plus commander gear and battle consumables. Commanders earn XP. Some gear is only found on bosses and side roads. Story beats unlock new stock.
+- Pick Mira, Holt, or Ivo before the campaign. Sera joins after Heartwood Spire. Rocket troopers and artillery unlock from later cities. Commission the fleet at HQ to buy ships in battle.
+- `H` opens how-to-play. `M` toggles sound. On the result screen, Enter returns to the map and Esc does the same.
 
 ## Balance
 

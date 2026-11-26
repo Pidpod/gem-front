@@ -1,8 +1,13 @@
 import { BALANCE } from '../config/balance';
+import { buildingById } from '../config/cities';
+import { commanderById } from '../config/commanders';
+import { itemById, levelForXp } from '../config/items';
 import { levelById, type LevelMix } from '../config/levels';
 import { multiplierFor, type UpgradeId } from '../config/upgrades';
-import type { UnitKind } from './types';
+import { nodeById, regionById } from '../config/world';
+import type { SaveData } from './progress';
 import { loadProgress } from './progress';
+import type { UnitKind } from './types';
 
 export interface Tuning {
   playerMax: number;
@@ -19,6 +24,15 @@ export interface Tuning {
   superBase: number;
   strikePower: number;
   superCharge: number;
+  /** Multiplier on shop repair and match-5 ally repair. */
+  repairMul: number;
+  repairAmount: number;
+  shopCostMul: number;
+  creditMul: number;
+  superGemMul: number;
+  spawnBonus: Partial<Record<UnitKind, number>>;
+  startUnits: UnitKind[];
+  regionTint: number;
   boss: boolean;
   title: string;
   levelId: number;
@@ -40,39 +54,108 @@ export function defaultTuning(): Tuning {
     superBase: BALANCE.superWeapon.baseDamage,
     strikePower: 1,
     superCharge: 1,
+    repairMul: 1,
+    repairAmount: BALANCE.repair.amount,
+    shopCostMul: 1,
+    creditMul: 1,
+    superGemMul: 1,
+    spawnBonus: {},
+    startUnits: [],
+    regionTint: 0,
     boss: false,
     title: 'Destroy the enemy base',
     levelId: 1,
   };
 }
 
-export function tuningForLevel(levelId: number): Tuning {
+export function tuningForLevel(levelId: number, save: SaveData = loadProgress()): Tuning {
   const level = levelById(levelId);
-  const ranks = loadProgress().ranks;
+  const ranks = save.ranks;
   const mul = (id: UpgradeId) => multiplierFor(id, ranks[id] ?? 0);
+  const commander = commanderById(save.commander);
+  const levelBonus = levelForXp(save.xp[save.commander] ?? 0);
+  let unitDmg = 0;
+  let baseHp = 0;
+  let creditMul = 0;
+  let superMul = 0;
+  let superChargeAdd = 0;
+  let shopMul = 1;
+  const spawnBonus: Partial<Record<UnitKind, number>> = {};
+  const gear = save.equipped[save.commander] ?? {};
+  for (const id of [gear.weapon, gear.armor, gear.accessory]) {
+    if (!id) continue;
+    const item = itemById(id);
+    if (!item) continue;
+    unitDmg += item.unitDmg ?? 0;
+    baseHp += item.baseHp ?? 0;
+    creditMul += item.creditMul ?? 0;
+    superMul += item.superMul ?? 0;
+    superChargeAdd += item.superCharge ?? 0;
+    if (item.shopMul) shopMul *= item.shopMul;
+    for (const [kind, bonus] of Object.entries(item.spawnBonus ?? {})) {
+      const key = kind as UnitKind;
+      spawnBonus[key] = (spawnBonus[key] ?? 0) + (bonus ?? 0);
+    }
+  }
+  let medicHeal = BALANCE.medic.healAmount * mul('medicHeal') * commander.medicHeal;
+  let repairMul = mul('repairPower') * commander.repair;
+  let superCharge = mul('superCharge') * commander.superCharge * (1 + superChargeAdd);
+  let superUnit = Math.round(BALANCE.superWeapon.unitDamage * mul('superDmg'));
+  let superBase = Math.round(BALANCE.superWeapon.baseDamage * mul('superDmg'));
+  const startUnits: UnitKind[] = [];
+  for (const id of save.buildings) {
+    const built = buildingById(id);
+    if (!built) continue;
+    if (built.start) startUnits.push(...built.start);
+    if (built.shopCostMul) shopMul *= built.shopCostMul;
+    if (built.medicHeal) medicHeal *= built.medicHeal;
+    if (built.repair) repairMul *= built.repair;
+    if (built.superCharge) superCharge *= built.superCharge;
+    if (built.superDmg) {
+      superUnit = Math.round(superUnit * built.superDmg);
+      superBase = Math.round(superBase * built.superDmg);
+    }
+  }
+  const grown = (1 + unitDmg) * (1 + (levelBonus - 1) * 0.03);
+  const hpMul: Partial<Record<UnitKind, number>> = {
+    infantry: mul('infantryHp'),
+    tank: mul('tankHp') * commander.tankHp,
+    heli: mul('heliHp'),
+    ship: mul('shipHp'),
+  };
+  const dmgMul: Partial<Record<UnitKind, number>> = {
+    infantry: mul('infantryDmg') * grown,
+    tank: mul('tankDmg') * commander.tankDmg * grown,
+    heli: mul('heliDmg') * grown,
+    rocket: commander.rocketDmg * grown,
+    artillery: commander.artilleryDmg * grown,
+    heavy: grown,
+    ship: mul('shipDmg') * grown,
+  };
+  const region = regionById(nodeById(level.id).region);
   return {
-    playerMax: Math.round(BALANCE.bases.playerHp * mul('baseHp')),
+    playerMax: Math.round(BALANCE.bases.playerHp * mul('baseHp') * (1 + baseHp) + (levelBonus - 1) * 18),
     enemyMax: level.enemyHp,
     firstDelay: level.firstDelay,
     intervalScale: level.intervalScale,
     enemyHpScale: level.enemyHpScale,
     enemyDmgScale: level.enemyDmgScale,
     mix: level.mix,
-    hpMul: {
-      infantry: mul('infantryHp'),
-      tank: mul('tankHp'),
-      heli: mul('heliHp'),
-    },
-    dmgMul: {
-      infantry: mul('infantryDmg'),
-      tank: mul('tankDmg'),
-      heli: mul('heliDmg'),
-    },
-    medicHeal: BALANCE.medic.healAmount * mul('medicHeal'),
-    superUnit: Math.round(BALANCE.superWeapon.unitDamage * mul('superDmg')),
-    superBase: Math.round(BALANCE.superWeapon.baseDamage * mul('superDmg')),
-    strikePower: mul('strikePower'),
-    superCharge: mul('superCharge'),
+    hpMul,
+    dmgMul,
+    medicHeal,
+    superUnit,
+    superBase,
+    strikePower: mul('strikePower') * commander.strike,
+    superCharge,
+    repairMul,
+    repairAmount: Math.round(BALANCE.repair.amount * repairMul),
+    shopCostMul: shopMul,
+    creditMul: 1 + creditMul,
+    superGemMul: 1 + superMul,
+    spawnBonus,
+    startUnits,
+    regionTint: region.battleTint,
     boss: level.boss,
     title: level.boss ? `${level.name} · BOSS` : level.name,
     levelId: level.id,

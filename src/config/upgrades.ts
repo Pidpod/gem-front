@@ -11,7 +11,10 @@ export type UpgradeId =
   | 'baseHp'
   | 'superCharge'
   | 'superDmg'
-  | 'strikePower';
+  | 'strikePower'
+  | 'shipHp'
+  | 'shipDmg'
+  | 'repairPower';
 
 export interface UpgradeTier {
   cost: number;
@@ -49,6 +52,8 @@ export const UPGRADES: UpgradeDef[] = [
   { id: 'tankDmg', name: 'TANK GUN', blurb: 'Heavier shells', unit: 'DMG', base: BALANCE.units.tank.damage, tiers: GUN },
   { id: 'heliHp', name: 'HELI FRAME', blurb: 'Sturdier birds', unit: 'HP', base: BALANCE.units.heli.maxHp, tiers: HP },
   { id: 'heliDmg', name: 'HELI GUNS', blurb: 'Meaner strafes', unit: 'DMG', base: BALANCE.units.heli.damage, tiers: GUN },
+  { id: 'shipHp', name: 'SHIP HULL', blurb: 'Thicker plates', unit: 'HP', base: BALANCE.units.ship.maxHp, tiers: HP },
+  { id: 'shipDmg', name: 'SHIP GUNS', blurb: 'Heavier shore fire', unit: 'DMG', base: BALANCE.units.ship.damage, tiers: GUN },
   {
     id: 'medicHeal',
     name: 'MEDIC KITS',
@@ -60,6 +65,19 @@ export const UPGRADES: UpgradeDef[] = [
       { cost: 120, mult: 1.5 },
       { cost: 200, mult: 1.8 },
       { cost: 310, mult: 2.15 },
+    ],
+  },
+  {
+    id: 'repairPower',
+    name: 'RESTORATION',
+    blurb: 'Repair kits and the repair shop patch more',
+    unit: 'HP',
+    base: BALANCE.repair.amount,
+    tiers: [
+      { cost: 50, mult: 1.2 },
+      { cost: 110, mult: 1.45 },
+      { cost: 190, mult: 1.7 },
+      { cost: 300, mult: 2 },
     ],
   },
   {

@@ -1,15 +1,41 @@
+import { BUILDINGS, buildingById, LIBERATION } from '../config/cities';
+import { commanderById, isCommanderId, type CommanderId } from '../config/commanders';
+import { FLEET_COST } from '../config/hq';
+import { dropFor, itemById, xpGain, type GearSlot } from '../config/items';
 import { LEVELS, levelById, type LevelDef } from '../config/levels';
 import { UPGRADES, statAt, upgradeById, type UpgradeId } from '../config/upgrades';
+import { neighbors } from '../config/world';
 import type { RunStats } from './types';
 
 const KEY = 'gem-front-campaign';
 
+export interface ItemStack {
+  id: string;
+  count: number;
+}
+
 export interface SaveData {
   v: 1;
   funds: number;
+  /** Highest linear frontier kept so older saves still load. */
   unlocked: number;
+  /** Nodes the player has liberated. */
+  cleared: number[];
+  /** Shop price multiplier for war-fund purchases. 1 means full price. */
+  discount: number;
+  seen: string[];
   stars: Record<string, number>;
   ranks: Partial<Record<UpgradeId, number>>;
+  commander: CommanderId;
+  /** Built city structure ids. */
+  buildings: string[];
+  /** The navy can be bought with credits in battle. */
+  fleet: boolean;
+  inventory: ItemStack[];
+  equipped: Partial<Record<CommanderId, Partial<Record<GearSlot, string>>>>;
+  /** Consumable ids shown on the battle belt, at most four. */
+  belt: string[];
+  xp: Partial<Record<CommanderId, number>>;
 }
 
 export interface MemoryStorage {
@@ -19,7 +45,55 @@ export interface MemoryStorage {
 }
 
 export function freshSave(): SaveData {
-  return { v: 1, funds: 0, unlocked: 1, stars: {}, ranks: {} };
+  return {
+    v: 1,
+    funds: 0,
+    unlocked: 1,
+    cleared: [],
+    discount: 1,
+    seen: [],
+    stars: {},
+    ranks: {},
+    commander: 'mira',
+    buildings: [],
+    fleet: false,
+    inventory: [],
+    equipped: {},
+    belt: [],
+    xp: {},
+  };
+}
+
+export function priceOf(save: SaveData, cost: number): number {
+  const cut = save.discount > 0 && save.discount < 1 ? save.discount : 1;
+  return Math.max(0, Math.round(cost * cut));
+}
+
+export function isCleared(save: SaveData, id: number): boolean {
+  return save.cleared.includes(id);
+}
+
+/** A node can be marched on once any neighboring road has been liberated, or it is the bastion. */
+export function isReachable(save: SaveData, id: number): boolean {
+  if (id === 1) return true;
+  return neighbors(id).some((next) => save.cleared.includes(next));
+}
+
+export function reachableIds(save: SaveData): number[] {
+  return LEVELS.map((level) => level.id).filter((id) => isReachable(save, id));
+}
+
+export function commanderUnlocked(save: SaveData, id: CommanderId): boolean {
+  const node = commanderById(id).unlockNode;
+  return node === undefined || save.cleared.includes(node);
+}
+
+export function unitUnlocked(save: SaveData, unit: 'rocket' | 'artillery'): boolean {
+  return LIBERATION.some((entry) => entry.unit === unit && save.cleared.includes(entry.nodeId));
+}
+
+export function countOf(save: SaveData, id: string): number {
+  return save.inventory.find((stack) => stack.id === id)?.count ?? 0;
 }
 
 export function scoreStars(level: LevelDef, stats: RunStats, hpRatio: number): number {
@@ -41,35 +115,121 @@ export function grantVictory(
 ): { save: SaveData; stars: number; funds: number; hasNext: boolean } {
   const level = levelById(levelId);
   const stars = scoreStars(level, stats, hpRatio);
-  const funds = fundsFor(level, stars);
-  const best = Math.max(save.stars[String(level.id)] ?? 0, stars);
-  const unlocked = Math.max(save.unlocked, Math.min(LEVELS.length, level.id + 1));
-  return {
-    save: {
-      ...save,
-      funds: save.funds + funds,
-      unlocked,
-      stars: { ...save.stars, [String(level.id)]: best },
-    },
-    stars,
-    funds,
-    hasNext: level.id < LEVELS.length,
+  const firstClear = !save.cleared.includes(level.id);
+  let funds = fundsFor(level, stars);
+  if (firstClear && level.bonusFunds) funds += level.bonusFunds;
+  for (const id of save.buildings) {
+    const built = buildingById(id);
+    if (built?.fundsPerWin) funds += built.fundsPerWin;
+  }
+  const before = new Set(reachableIds(save));
+  const cleared = firstClear ? [...save.cleared, level.id] : save.cleared;
+  const gained = xpGain(level.boss, stars);
+  const xp = { ...save.xp, [save.commander]: (save.xp[save.commander] ?? 0) + gained };
+  let inventory = save.inventory;
+  if (firstClear) {
+    const found = dropFor(level.id);
+    if (found) inventory = addStack(inventory, found, 1);
+  }
+  const nextSave: SaveData = {
+    ...save,
+    funds: save.funds + funds,
+    unlocked: Math.max(save.unlocked, Math.min(LEVELS.length, level.id + 1)),
+    cleared,
+    discount: firstClear && level.grantsDiscount ? Math.min(save.discount, level.grantsDiscount) : save.discount,
+    stars: { ...save.stars, [String(level.id)]: Math.max(save.stars[String(level.id)] ?? 0, stars) },
+    xp,
+    inventory,
   };
+  const opened = reachableIds(nextSave).filter((id) => !before.has(id) && !nextSave.cleared.includes(id));
+  return { save: nextSave, stars, funds, hasNext: opened.length > 0 };
 }
 
 export function buyUpgrade(save: SaveData, id: UpgradeId): { save: SaveData; ok: boolean } {
   const def = upgradeById(id);
   const rank = save.ranks[id] ?? 0;
   const tier = def.tiers[rank];
-  if (!tier || save.funds < tier.cost) return { save, ok: false };
+  const price = tier ? priceOf(save, tier.cost) : 0;
+  if (!tier || save.funds < price) return { save, ok: false };
   return {
     ok: true,
     save: {
       ...save,
-      funds: save.funds - tier.cost,
+      funds: save.funds - price,
       ranks: { ...save.ranks, [id]: rank + 1 },
     },
   };
+}
+
+export function buyBuilding(save: SaveData, id: string): { save: SaveData; ok: boolean } {
+  const built = buildingById(id);
+  if (!built || save.buildings.includes(id) || !save.cleared.includes(built.cityId)) return { save, ok: false };
+  const price = priceOf(save, built.cost);
+  if (save.funds < price) return { save, ok: false };
+  return { ok: true, save: { ...save, funds: save.funds - price, buildings: [...save.buildings, id] } };
+}
+
+export function buyFleet(save: SaveData): { save: SaveData; ok: boolean } {
+  if (save.fleet) return { save, ok: false };
+  const price = priceOf(save, FLEET_COST);
+  if (save.funds < price) return { save, ok: false };
+  return { ok: true, save: { ...save, fleet: true, funds: save.funds - price } };
+}
+
+export function itemStocked(save: SaveData, id: string): boolean {
+  const item = itemById(id);
+  if (!item || item.price <= 0) return false;
+  if (item.requiresCleared !== undefined && !save.cleared.includes(item.requiresCleared)) return false;
+  return true;
+}
+
+export function buyItem(save: SaveData, id: string): { save: SaveData; ok: boolean } {
+  const item = itemById(id);
+  if (!item || !itemStocked(save, id)) return { save, ok: false };
+  if (item.kind === 'equip' && countOf(save, id) > 0) return { save, ok: false };
+  const price = priceOf(save, item.price);
+  if (save.funds < price) return { save, ok: false };
+  return {
+    ok: true,
+    save: { ...save, funds: save.funds - price, inventory: addStack(save.inventory, id, 1) },
+  };
+}
+
+export function equipItem(save: SaveData, id: string): { save: SaveData; ok: boolean } {
+  const item = itemById(id);
+  if (!item || item.kind !== 'equip' || !item.slot || countOf(save, id) < 1) return { save, ok: false };
+  const gear = { ...(save.equipped[save.commander] ?? {}), [item.slot]: id };
+  return { ok: true, save: { ...save, equipped: { ...save.equipped, [save.commander]: gear } } };
+}
+
+export function clearSlot(save: SaveData, slot: GearSlot): SaveData {
+  const gear = { ...(save.equipped[save.commander] ?? {}) };
+  delete gear[slot];
+  return { ...save, equipped: { ...save.equipped, [save.commander]: gear } };
+}
+
+export function toggleBelt(save: SaveData, id: string): SaveData {
+  const item = itemById(id);
+  if (!item || item.kind !== 'consumable' || countOf(save, id) < 1) return save;
+  if (save.belt.includes(id)) return { ...save, belt: save.belt.filter((entry) => entry !== id) };
+  if (save.belt.length >= 4) return save;
+  return { ...save, belt: [...save.belt, id] };
+}
+
+export function consumeItem(save: SaveData, id: string): { save: SaveData; ok: boolean } {
+  const item = itemById(id);
+  if (!item || item.kind !== 'consumable' || countOf(save, id) < 1) return { save, ok: false };
+  return { ok: true, save: { ...save, inventory: addStack(save.inventory, id, -1) } };
+}
+
+export function setCommander(save: SaveData, id: CommanderId): { save: SaveData; ok: boolean } {
+  if (!commanderUnlocked(save, id)) return { save, ok: false };
+  return { ok: true, save: { ...save, commander: id } };
+}
+
+export function markSeen(save: SaveData, id: string): SaveData {
+  if (save.seen.includes(id)) return save;
+  return { ...save, seen: [...save.seen, id] };
 }
 
 export function upgradeLine(id: UpgradeId, rank: number): { current: number; next: number | null; cost: number | null; maxed: boolean } {
@@ -117,10 +277,30 @@ export function resetProgress(storage: MemoryStorage | null = browserStorage()):
   return save;
 }
 
+function addStack(inventory: ItemStack[], id: string, delta: number): ItemStack[] {
+  const item = itemById(id);
+  if (!item) return inventory;
+  const current = inventory.find((stack) => stack.id === id)?.count ?? 0;
+  let next = current + delta;
+  if (item.kind === 'equip') next = Math.min(1, next);
+  next = Math.max(0, next);
+  const rest = inventory.filter((stack) => stack.id !== id);
+  if (next <= 0) return rest;
+  return [...rest, { id, count: next }];
+}
+
 function sanitize(raw: Partial<SaveData>): SaveData {
   const fresh = freshSave();
   const unlocked = clampInt(raw.unlocked, 1, LEVELS.length);
   const funds = Math.max(0, Math.floor(Number(raw.funds) || 0));
+  let cleared: number[] = [];
+  if (Array.isArray(raw.cleared)) {
+    cleared = [...new Set(raw.cleared.filter((id) => LEVELS.some((level) => level.id === id)))];
+  } else if (typeof raw.unlocked === 'number') {
+    for (let id = 1; id < unlocked; id++) cleared.push(id);
+  }
+  const seen = Array.isArray(raw.seen) ? raw.seen.filter((id) => typeof id === 'string') : [];
+  const discount = typeof raw.discount === 'number' && raw.discount > 0 && raw.discount <= 1 ? raw.discount : 1;
   const stars: Record<string, number> = {};
   if (raw.stars && typeof raw.stars === 'object') {
     for (const level of LEVELS) {
@@ -135,7 +315,60 @@ function sanitize(raw: Partial<SaveData>): SaveData {
       if (typeof value === 'number') ranks[upgrade.id] = clampInt(value, 0, upgrade.tiers.length);
     }
   }
-  return { ...fresh, funds, unlocked, stars, ranks };
+  const commander = typeof raw.commander === 'string' && isCommanderId(raw.commander) ? raw.commander : 'mira';
+  const knownBuildings = new Set(BUILDINGS.map((entry) => entry.id));
+  const buildings = Array.isArray(raw.buildings)
+    ? raw.buildings.filter((id) => typeof id === 'string' && knownBuildings.has(id))
+    : [];
+  const inventory: ItemStack[] = [];
+  if (Array.isArray(raw.inventory)) {
+    for (const stack of raw.inventory) {
+      if (!stack || typeof stack.id !== 'string' || !itemById(stack.id)) continue;
+      const count = clampInt(stack.count, 0, 99);
+      if (count > 0) inventory.push({ id: stack.id, count: itemById(stack.id)?.kind === 'equip' ? 1 : count });
+    }
+  }
+  const equipped: SaveData['equipped'] = {};
+  if (raw.equipped && typeof raw.equipped === 'object') {
+    for (const id of ['mira', 'holt', 'ivo', 'sera'] as const) {
+      const gear = raw.equipped[id];
+      if (!gear) continue;
+      const slots: Partial<Record<GearSlot, string>> = {};
+      for (const slot of ['weapon', 'armor', 'accessory'] as const) {
+        const itemId = gear[slot];
+        const item = typeof itemId === 'string' ? itemById(itemId) : undefined;
+        if (item && item.kind === 'equip' && item.slot === slot) slots[slot] = item.id;
+      }
+      if (Object.keys(slots).length > 0) equipped[id] = slots;
+    }
+  }
+  const belt = Array.isArray(raw.belt)
+    ? raw.belt.filter((id) => typeof id === 'string' && itemById(id)?.kind === 'consumable').slice(0, 4)
+    : [];
+  const xp: SaveData['xp'] = {};
+  if (raw.xp && typeof raw.xp === 'object') {
+    for (const id of ['mira', 'holt', 'ivo', 'sera'] as const) {
+      const value = raw.xp[id];
+      if (typeof value === 'number' && value > 0) xp[id] = Math.floor(value);
+    }
+  }
+  return {
+    ...fresh,
+    funds,
+    unlocked,
+    cleared,
+    discount,
+    seen,
+    stars,
+    ranks,
+    commander,
+    buildings,
+    fleet: raw.fleet === true,
+    inventory,
+    equipped,
+    belt,
+    xp,
+  };
 }
 
 function clampInt(value: unknown, min: number, max: number): number {

@@ -33,6 +33,22 @@ const ENEMY = {
   p: '#3dbe6e',
 };
 
+const NAVY = {
+  ...PLAYER,
+  b: '#2f6ea8',
+  B: '#9ad4f5',
+  y: '#f0c43a',
+  k: '#143044',
+};
+
+const NAVY_ENEMY = {
+  ...ENEMY,
+  b: '#8a3430',
+  B: '#e7a090',
+  y: '#f0c43a',
+  k: '#2a1210',
+};
+
 const FX = {
   y: '#ffe56a',
   o: '#ff8a2a',
@@ -61,6 +77,8 @@ export function installArt(scene: Phaser.Scene): void {
   bake(scene, 'px-rocket-enemy', rocket(true), 2, ENEMY);
   bake(scene, 'px-heli-player', heli(), 2, PLAYER);
   bake(scene, 'px-heli-enemy', heli(), 2, ENEMY);
+  bake(scene, 'px-ship-player', ship(), 2, NAVY);
+  bake(scene, 'px-ship-enemy', ship(), 2, NAVY_ENEMY);
   bake(scene, 'px-base-player', base(), 2, PLAYER);
   bake(scene, 'px-base-enemy', base(), 2, ENEMY);
   bake(scene, 'px-boom', boom(), 2, FX);
@@ -335,4 +353,36 @@ function missile(): string[] {
 
 function bullet(): string[] {
   return ['yy', 'yo'];
+}
+
+function ship(): string[][] {
+  const hull = [
+    '................',
+    '.......k........',
+    '......kyk.......',
+    '.....kByBk......',
+    '...bbbbbbbbbb...',
+    '..bByByByByBbb..',
+    '.bbbbbbbbbbbbbb.',
+    '..kkkkkkkkkkkk..',
+    '................',
+    '................',
+    '................',
+    '................',
+  ];
+  const wake = [
+    '................',
+    '.......k........',
+    '......kmk.......',
+    '.....kByBk......',
+    '...bbbbbbbbbb...',
+    '..bByByByByBbb..',
+    '.bbbbbbbbbbbbbb.',
+    '..kkkkkkkkkkkk..',
+    '................',
+    '................',
+    '................',
+    '................',
+  ];
+  return [hull, wake];
 }
