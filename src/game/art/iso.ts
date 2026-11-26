@@ -226,7 +226,7 @@ function paintFront(ctx: CanvasRenderingContext2D): void {
 function drawUnit(ctx: CanvasRenderingContext2D, kind: UnitKind, side: Side, frame: number): void {
   const dir = side === 'player' ? 1 : -1;
   const team = side === 'player' ? '#e2c15a' : '#d24a3c';
-  const hull = side === 'player' ? ['#9aaa62', '#4c5c30', '#d4e090'] : ['#a06858', '#4a3028', '#e0a090'];
+  const hull = side === 'player' ? ['#6a92c8', '#274a86', '#d5e4f8'] : ['#a06858', '#4a3028', '#e0a090'];
   if (kind === 'heli') drawHeli(ctx, dir, team, hull, frame);
   else if (kind === 'ship') drawShip(ctx, dir, team, hull, frame);
   else if (kind === 'infantry' || kind === 'rocket' || kind === 'medic') drawTroop(ctx, kind, dir, team, frame);
@@ -359,7 +359,7 @@ function drawShip(ctx: CanvasRenderingContext2D, dir: number, team: string, hull
 function drawBase(ctx: CanvasRenderingContext2D, side: Side, frame: number): void {
   const team = side === 'player' ? '#e2c15a' : '#d24a3c';
   shadow(ctx, 40, 62, 26, 8);
-  poly(ctx, [16, 36, 64, 36, 70, 56, 10, 56], side === 'player' ? '#8a9070' : '#8a6058');
+  poly(ctx, [16, 36, 64, 36, 70, 56, 10, 56], side === 'player' ? '#6a92c8' : '#8a6058');
   poly(ctx, [16, 36, 10, 56, 14, 62, 22, 42], '#3a3830');
   ctx.fillStyle = '#d8d2c4';
   ctx.fillRect(30, 22, 22, 18);

@@ -1,5 +1,6 @@
 import { sfx } from '../../audio/sfx';
 import { BALANCE, STRIKE_LABEL } from '../../config/balance';
+import { skinFor } from '../../config/factions';
 import { installIso, project } from '../art/iso';
 import { installArt } from '../art/sheets';
 import { defaultTuning, type Tuning } from '../loadout';
@@ -328,7 +329,7 @@ export class Battlefield {
   }
 
   private createView(unit: SimUnit): UnitView {
-    const key = `${LOOK[unit.kind]}-${unit.side}`;
+    const key = `${LOOK[unit.kind]}-${this.skin(unit.side)}`;
     const root = this.scene.add.container(unit.x, unit.y);
     const body = this.scene.add.sprite(0, 0, key, '0');
     body.setOrigin(0.5, 0.78);
@@ -545,7 +546,7 @@ export class Battlefield {
   }
 
   private makeBase(side: Side): Phaser.GameObjects.Sprite {
-    const key = side === 'player' ? 'iso-base-player' : 'iso-base-enemy';
+    const key = `iso-base-${this.skin(side)}`;
     const at = project(side === 'player' ? LANE.playerX + 30 : LANE.enemyX - 30, LANE.groundY);
     const sprite = this.scene.add.sprite(at.sx, at.sy, key, '0');
     sprite.setOrigin(0.5, 0.78);
@@ -553,6 +554,10 @@ export class Battlefield {
     sprite.setDepth(at.sy);
     this.world.add(sprite);
     return sprite;
+  }
+
+  private skin(side: Side): 'player' | 'enemy' {
+    return skinFor(this.tuning.faction, side === 'player');
   }
 
   private drawScenery(): void {
