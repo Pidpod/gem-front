@@ -5,6 +5,7 @@ import { dropFor, itemById, levelForXp, xpGain, type GearSlot } from '../config/
 import { LEVELS, levelById, type LevelDef } from '../config/levels';
 import { UPGRADES, statAt, upgradeById, type UpgradeId } from '../config/upgrades';
 import { FACTIONS, isFactionId, pactPartner, type FactionId } from '../config/factions';
+import { perkMods, SITES } from '../config/territories';
 import { neighbors } from '../config/world';
 import type { RunStats } from './types';
 
@@ -43,6 +44,8 @@ export interface SaveData {
   factionPicked: boolean;
   /** Late pact with the other furnace or the ice. Azure never sets this. */
   pact: FactionId | null;
+  /** Sites a rival army has marched into. */
+  rivalHeld: { id: number; faction: FactionId }[];
 }
 
 export interface MemoryStorage {
@@ -71,6 +74,7 @@ export function freshSave(): SaveData {
     faction: 'azure',
     factionPicked: false,
     pact: null,
+    rivalHeld: [],
   };
 }
 
@@ -154,6 +158,9 @@ export function grantVictory(
     funds += leader.planPerLevel * nextLevel;
   }
   if (leader.fundsMul) funds = Math.round(funds * leader.fundsMul);
+  const perks = perkMods(firstClear ? [...save.cleared, level.id] : save.cleared);
+  funds += perks.funds;
+  funds = Math.round(funds * perks.fundsMul + save.funds * perks.interest);
   const before = new Set(reachableIds(save));
   const cleared = firstClear ? [...save.cleared, level.id] : save.cleared;
   const gained = xpGain(level.boss, stars);
@@ -177,6 +184,7 @@ export function grantVictory(
     stars: { ...save.stars, [String(level.id)]: Math.max(save.stars[String(level.id)] ?? 0, stars) },
     xp,
     inventory,
+    rivalHeld: advanceRivals({ ...save, cleared, faction: save.faction, pact: save.pact, rivalHeld: save.rivalHeld }),
   };
   const opened = reachableIds(nextSave).filter((id) => !before.has(id) && !nextSave.cleared.includes(id));
   return { save: nextSave, stars, funds, hasNext: opened.length > 0 };
@@ -413,7 +421,33 @@ function sanitize(raw: Partial<SaveData>): SaveData {
       pactPartner(typeof raw.faction === 'string' && isFactionId(raw.faction) ? raw.faction : 'azure') === raw.pact
         ? raw.pact
         : null,
+    rivalHeld: Array.isArray(raw.rivalHeld)
+      ? raw.rivalHeld.filter((entry) => entry && SITES.some((site) => site.id === entry.id) && isFactionId(entry.faction))
+      : [],
   };
+}
+
+function advanceRivals(save: SaveData): SaveData['rivalHeld'] {
+  const held = [...save.rivalHeld];
+  for (const rival of ['azure', 'crimson', 'frost'] as const) {
+    if (rival === save.faction || rival === save.pact) continue;
+    const owned = new Set<number>();
+    for (const site of SITES) if (site.seed === rival) owned.add(site.id);
+    for (const claim of held) if (claim.faction === rival) owned.add(claim.id);
+    for (const id of save.cleared) owned.delete(id);
+    let pick: number | null = null;
+    for (const id of owned) {
+      for (const next of neighbors(id)) {
+        if (save.cleared.includes(next) || next === startNode(save)) continue;
+        if (held.some((claim) => claim.id === next)) continue;
+        pick = next;
+        break;
+      }
+      if (pick) break;
+    }
+    if (pick) held.push({ id: pick, faction: rival });
+  }
+  return held;
 }
 
 function clampInt(value: unknown, min: number, max: number): number {

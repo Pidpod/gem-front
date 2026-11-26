@@ -45,5 +45,8 @@ export function territoryByRegion(region: RegionId): Territory {
 }
 
 export function platePos(id: number): { x: number; y: number } {
-  return PLATE[id] ?? { x: 280, y: 360 };
+  const known = PLATE[id];
+  if (known) return known;
+  const i = Math.max(0, id - 16);
+  return { x: 80 + (i % 4) * 120, y: 150 + Math.floor(i / 4) * 120 };
 }

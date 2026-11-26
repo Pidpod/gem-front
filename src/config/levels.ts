@@ -1,3 +1,4 @@
+import { SITES } from './territories';
 import type { UnitKind } from '../game/types';
 
 export type LevelMix = 'skirmish' | 'armor' | 'air' | 'assault' | 'boss';
@@ -47,6 +48,23 @@ export const LEVELS: LevelDef[] = [
   { id: 13, name: 'Tide Battery', blurb: 'The coastal guns', enemyHp: 1860, intervalScale: 0.8, firstDelay: 5, enemyHpScale: 1.24, enemyDmgScale: 1.1, mix: 'air', boss: false, funds: 84, starBonus: 22, starHp: 0.38, starTime: 70, starCombo: 4 },
   { id: 14, name: 'Black Dock', blurb: 'Supplies under the guns', enemyHp: 1200, intervalScale: 0.95, firstDelay: 6, enemyHpScale: 1.05, enemyDmgScale: 1, mix: 'skirmish', boss: false, funds: 48, starBonus: 14, starHp: 0.45, starTime: 70, starCombo: 2, grantsDiscount: 0.85 },
   { id: 15, name: 'Harbor Spire', blurb: 'The last occupied well', enemyHp: 2600, intervalScale: 0.72, firstDelay: 4.4, enemyHpScale: 1.4, enemyDmgScale: 1.15, mix: 'boss', boss: true, funds: 150, starBonus: 36, starHp: 0.3, starTime: 110, starCombo: 4 },
+  ...SITES.filter((site) => site.id > 15).map((site) => ({
+    id: site.id,
+    name: site.name,
+    blurb: site.blurb,
+    enemyHp: 900 + site.id * 40,
+    intervalScale: Math.max(0.72, 1.05 - site.id * 0.008),
+    firstDelay: Math.max(4.2, 7.2 - site.id * 0.06),
+    enemyHpScale: 1 + site.id * 0.01,
+    enemyDmgScale: 1 + site.id * 0.004,
+    mix: site.perk === 'ancient' ? 'boss' as const : site.id % 3 === 0 ? 'air' as const : 'armor' as const,
+    boss: site.perk === 'ancient',
+    funds: 36 + site.id * 2,
+    starBonus: 12,
+    starHp: 0.4,
+    starTime: 80,
+    starCombo: 3,
+  })),
 ];
 
 export function levelById(id: number): LevelDef {
