@@ -5,6 +5,7 @@ import { itemById, levelForXp } from '../config/items';
 import { levelById, type LevelMix } from '../config/levels';
 import { multiplierFor, type UpgradeId } from '../config/upgrades';
 import type { FactionId } from '../config/factions';
+import { perkMods } from '../config/territories';
 import { nodeById, regionById } from '../config/world';
 import type { SaveData } from './progress';
 import { loadProgress } from './progress';
@@ -135,17 +136,22 @@ export function tuningForLevel(levelId: number, save: SaveData = loadProgress())
       superBase = Math.round(superBase * built.superDmg);
     }
   }
-  const grown = (1 + unitDmg) * (1 + (levelBonus - 1) * 0.03);
+  const perks = perkMods(save.cleared);
+  shopMul *= perks.shop;
+  medicHeal *= perks.heal;
+  repairMul *= perks.repair;
+  superCharge *= perks.super;
+  const grown = (1 + unitDmg) * (1 + (levelBonus - 1) * 0.03) * perks.speed;
   const hpMul: Partial<Record<UnitKind, number>> = {
     infantry: mul('infantryHp'),
-    tank: mul('tankHp') * commander.tankHp,
+    tank: mul('tankHp') * commander.tankHp * perks.tankHp,
     heli: mul('heliHp'),
     ship: mul('shipHp'),
   };
   const dmgMul: Partial<Record<UnitKind, number>> = {
-    infantry: mul('infantryDmg') * grown,
+    infantry: mul('infantryDmg') * grown * perks.infantry,
     tank: mul('tankDmg') * commander.tankDmg * grown,
-    heli: mul('heliDmg') * grown,
+    heli: mul('heliDmg') * grown * perks.heli,
     rocket: commander.rocketDmg * grown,
     artillery: commander.artilleryDmg * grown,
     heavy: grown,
@@ -153,7 +159,7 @@ export function tuningForLevel(levelId: number, save: SaveData = loadProgress())
   };
   const region = regionById(nodeById(level.id).region);
   return {
-    playerMax: Math.round(BALANCE.bases.playerHp * mul('baseHp') * (1 + baseHp) + (levelBonus - 1) * 18 + (commander.wallHp ?? 0)),
+    playerMax: Math.round(BALANCE.bases.playerHp * mul('baseHp') * (1 + baseHp) + (levelBonus - 1) * 18 + (commander.wallHp ?? 0) + perks.base),
     enemyMax: level.enemyHp,
     firstDelay: level.firstDelay,
     intervalScale: level.intervalScale,
@@ -178,7 +184,7 @@ export function tuningForLevel(levelId: number, save: SaveData = loadProgress())
     faction: save.faction,
     speedMul: commander.speedMul ?? 1,
     tankArmor: commander.tankArmor ?? 1,
-    enemySlow: commander.enemySlow ?? 1,
+    enemySlow: (commander.enemySlow ?? 1) * perks.enemySlow,
     enemySlowFor: commander.enemySlowFor ?? 0,
     focusMoves: commander.focusMoves ?? 0,
     paradeEvery: commander.paradeEvery ?? 0,

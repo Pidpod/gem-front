@@ -1,3 +1,5 @@
+import { EXTRA_LINKS, SITES } from './territories';
+
 export type RegionId = 'town' | 'forest' | 'desert' | 'coast';
 
 export interface RegionDef {
@@ -53,6 +55,13 @@ export const NODES: WorldNode[] = [
   { id: 13, x: 240, y: 1360, region: 'coast', kind: 'main', before: 'coast' },
   { id: 14, x: 380, y: 1440, region: 'coast', kind: 'side' },
   { id: 15, x: 240, y: 1560, region: 'coast', kind: 'boss', city: true, before: 'harbor', after: 'harbor-clear' },
+  ...SITES.filter((site) => site.id > 15).map((site) => ({
+    id: site.id,
+    x: site.x,
+    y: site.y,
+    region: site.region,
+    kind: site.perk === 'ancient' ? 'boss' as const : 'main' as const,
+  })),
 ];
 
 /** Undirected roads. A node opens once any neighbor is cleared. */
@@ -73,6 +82,7 @@ export const PATHS: [number, number][] = [
   [12, 13],
   [13, 14],
   [13, 15],
+  ...EXTRA_LINKS,
 ];
 
 export function nodeById(id: number): WorldNode {

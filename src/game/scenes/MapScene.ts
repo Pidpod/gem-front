@@ -2,6 +2,7 @@ import { sfx } from '../../audio/sfx';
 import { levelById } from '../../config/levels';
 import { FACTIONS, garrison, pactPartner, skinFor } from '../../config/factions';
 import { GLOBE_H, GLOBE_W, PLATE_H, PLATE_W, TERRITORIES, platePos, territoryByRegion } from '../../config/globe';
+import { SITES } from '../../config/territories';
 import { commanderById } from '../../config/commanders';
 import { levelForXp } from '../../config/items';
 import { NODES, PATHS, nodeById, regionById, route, type RegionId, type WorldNode } from '../../config/world';
@@ -180,6 +181,14 @@ export class MapScene extends Phaser.Scene {
       marks.strokeEllipse(territory.x, territory.y, 108, 64);
     }
     this.world.add(marks);
+    const sites = this.add.graphics();
+    for (const site of SITES) {
+      const owned = isCleared(this.save, site.id);
+      const color = owned ? 0xf4f1ea : site.seed === 'azure' ? 0x3a78c8 : site.seed === 'crimson' ? 0xc4473a : site.seed === 'frost' ? 0xd5e6f5 : 0xc4a15a;
+      sites.fillStyle(color, 1);
+      sites.fillCircle(site.x, site.y, site.id > 15 ? 4 : 6);
+    }
+    this.world.add(sites);
     for (const territory of TERRITORIES) {
       const open = NODES.some((node) => node.region === territory.region && (isCleared(this.save, node.id) || isReachable(this.save, node.id)));
       const label = this.add
@@ -390,6 +399,19 @@ export class MapScene extends Phaser.Scene {
       const wx = pointer.x - this.world.x;
       const wy = pointer.y - this.world.y;
       if (this.mode === 'world') {
+        let nearSite: number | null = null;
+        let nearDist = 18;
+        for (const site of SITES) {
+          const dist = Math.hypot(site.x - wx, site.y - wy);
+          if (dist < nearDist) {
+            nearSite = site.id;
+            nearDist = dist;
+          }
+        }
+        if (nearSite && (isCleared(this.save, nearSite) || isReachable(this.save, nearSite))) {
+          this.scene.start('game', { level: nearSite });
+          return;
+        }
         let best: (typeof TERRITORIES)[number] | null = null;
         let bestDist = 70;
         for (const territory of TERRITORIES) {
