@@ -52,6 +52,7 @@ export const BALANCE = {
     rocket: { maxHp: 46, damage: 13, interval: 0.6, speed: 54, range: 62, radius: 13 },
     heavy: { maxHp: 210, damage: 14, interval: 0.82, speed: 28, range: 30, radius: 18 },
     artillery: { maxHp: 42, damage: 15, interval: 1.1, speed: 24, range: 108, radius: 14 },
+    ship: { maxHp: 160, damage: 11, interval: 0.7, speed: 40, range: 92, radius: 16 },
   },
   strikes: {
     barrage: { hits: 5, damage: 16, radius: 26, baseDamage: 10, spread: 36, allyRepair: 40 },
@@ -114,7 +115,14 @@ export const BALANCE = {
   },
 };
 
-export const SHOP: { kind: ShopKind; cost: number; name: string; blurb: string }[] = [
+export interface ShopEntry {
+  kind: ShopKind;
+  cost: number;
+  name: string;
+  blurb: string;
+}
+
+export const SHOP: ShopEntry[] = [
   { kind: 'medic', cost: 40, name: 'MEDIC', blurb: 'heals troops' },
   { kind: 'repair', cost: BALANCE.repair.cost, name: 'REPAIR', blurb: 'fix base' },
   { kind: 'heavy', cost: 90, name: 'HEAVY', blurb: 'front line' },
@@ -128,6 +136,7 @@ export const UNIT_NAME: Record<UnitKind, string> = {
   rocket: 'ROCKET',
   heavy: 'HEAVY',
   artillery: 'ARTY',
+  ship: 'SHIP',
 };
 
 export const GEM_NAME: Record<GemColor, string> = {
@@ -155,7 +164,7 @@ export function shopCost(kind: ShopKind): number {
 }
 
 export function attackMultiplier(attacker: UnitKind, defender: UnitKind): number {
-  if (attacker === 'rocket' && (defender === 'tank' || defender === 'heavy' || defender === 'heli')) {
+  if (attacker === 'rocket' && (defender === 'tank' || defender === 'heavy' || defender === 'heli' || defender === 'ship')) {
     return BALANCE.bonus.rocketVsArmor;
   }
   return 1;

@@ -1,14 +1,16 @@
 import { sfx } from '../../audio/sfx';
-import { BALANCE, comboMultiplier, SHOP, STRIKE_LABEL, UNIT_NAME } from '../../config/balance';
+import { BALANCE, comboMultiplier, STRIKE_LABEL, UNIT_NAME, type ShopEntry } from '../../config/balance';
+import { itemById } from '../../config/items';
+import { battleShop } from '../battleShop';
 import { HOW_TO_LINES } from '../copy';
 import { boardGeom, commandButtonX, COMMAND, LANE, VIEW_H, VIEW_W } from '../layout';
 import { tuningForLevel } from '../loadout';
 import { Board, type GemPop } from '../match3/Board';
-import { loadProgress } from '../progress';
+import { consumeItem, countOf, isCleared, isReachable, loadProgress, writeProgress, type SaveData } from '../progress';
 import type { MatchReward } from '../match3/rewards';
 import { Battlefield } from '../rts/Battlefield';
 import { FONT, GEM_CSS, GEM_HEX, INK } from '../theme';
-import type { GemColor, Outcome, RunStats, ShopKind, StrikeKind } from '../types';
+import type { GemColor, Outcome, RunStats, ShopKind, StrikeKind, UnitKind } from '../types';
 import { emptyStats } from '../types';
 import { addBackdrop } from '../ui/backdrop';
 import { UiButton } from '../ui/button';
@@ -31,6 +33,12 @@ export class GameScene extends Phaser.Scene {
   private slowUntil = 0;
   private levelId = 1;
   private chargeMul = 1;
+  private repairAmount = BALANCE.repair.amount;
+  private creditMul = 1;
+  private superGemMul = 1;
+  private spawnBonus: Partial<Record<UnitKind, number>> = {};
+  private offers: ShopEntry[] = [];
+  private save: SaveData = loadProgress();
 
   constructor() {
     super('game');
@@ -38,8 +46,8 @@ export class GameScene extends Phaser.Scene {
 
   init(data?: { level?: number }): void {
     const save = loadProgress();
-    const requested = data?.level && data.level > 0 ? data.level : save.unlocked;
-    this.levelId = Math.max(1, Math.min(requested, save.unlocked));
+    const requested = data?.level && data.level > 0 ? data.level : 1;
+    this.levelId = isReachable(save, requested) || isCleared(save, requested) ? requested : 1;
   }
 
   create(): void {
@@ -55,23 +63,34 @@ export class GameScene extends Phaser.Scene {
     this.helpLayer = null;
 
     addBackdrop(this);
-    const tuning = tuningForLevel(this.levelId);
+    this.save = loadProgress();
+    const tuning = tuningForLevel(this.levelId, this.save);
     this.chargeMul = tuning.superCharge;
+    this.repairAmount = tuning.repairAmount;
+    this.creditMul = tuning.creditMul;
+    this.superGemMul = tuning.superGemMul;
+    this.spawnBonus = tuning.spawnBonus;
+    this.offers = battleShop(this.save, tuning.shopCostMul);
     this.battle = new Battlefield(this, Math.random, tuning);
+    for (const kind of tuning.startUnits) {
+      this.battle.queueSpawn(kind);
+      this.stats.unitsSpawned += 1;
+    }
     this.board = new Board(this, (reward, pops) => this.applyReward(reward, pops));
     this.hud = new Hud(this, {
       onBuy: (kind) => this.buy(kind),
       onFire: () => this.fire(),
       onHelp: () => this.toggleHelp(),
       onMute: () => this.toggleMute(),
-    });
+    }, this.offers);
+    this.drawBelt();
 
     this.input.keyboard?.on('keydown', (event: KeyboardEvent) => {
       if (event.repeat) return;
       const key = event.key.toLowerCase();
-      if (key === '1') this.buy('medic');
-      else if (key === '2') this.buy('repair');
-      else if (key === '3') this.buy('heavy');
+      const shopIndex = '123456'.indexOf(key);
+      const offered = shopIndex >= 0 ? this.offers[shopIndex] : undefined;
+      if (offered) this.buy(offered.kind);
       else if (key === 'f' || key === ' ') this.fire();
       else if (key === 'h') this.toggleHelp();
       else if (key === 'm') this.toggleMute();
@@ -110,17 +129,19 @@ export class GameScene extends Phaser.Scene {
 
   private applyReward(reward: MatchReward, pops: GemPop[]): void {
     if (this.finished) return;
-    this.credits += reward.credits;
-    this.stats.creditsEarned += reward.credits;
+    const credits = Math.round(reward.credits * this.creditMul);
+    this.credits += credits;
+    this.stats.creditsEarned += credits;
     this.stats.gemsCleared += reward.cleared;
     this.stats.bestCombo = Math.max(this.stats.bestCombo, reward.combo);
     if (reward.super > 0) {
-      const gain = Math.max(1, Math.round(reward.super * this.chargeMul));
+      const gain = Math.max(1, Math.round(reward.super * this.chargeMul * this.superGemMul));
       this.superCharge = Math.min(BALANCE.superMax, this.superCharge + gain);
     }
     for (const spawn of reward.spawns) {
-      for (let i = 0; i < spawn.count; i++) this.battle.queueSpawn(spawn.kind);
-      this.stats.unitsSpawned += spawn.count;
+      const count = spawn.count + (spawn.count > 0 ? (this.spawnBonus[spawn.kind] ?? 0) : 0);
+      for (let i = 0; i < count; i++) this.battle.queueSpawn(spawn.kind);
+      this.stats.unitsSpawned += count;
     }
     sfx.match(reward.combo, reward.big || reward.strikes.length > 0);
     this.trails(pops);
@@ -158,7 +179,7 @@ export class GameScene extends Phaser.Scene {
 
   private showReward(reward: MatchReward): void {
     const lines: { text: string; color: string }[] = [];
-    if (reward.credits > 0) lines.push({ text: `+${reward.credits} CR`, color: GEM_CSS.credit });
+    if (reward.credits > 0) lines.push({ text: `+${Math.round(reward.credits * this.creditMul)} CR`, color: GEM_CSS.credit });
     for (const spawn of reward.spawns) {
       lines.push({
         text: `+${spawn.count} ${UNIT_NAME[spawn.kind]}`,
@@ -176,10 +197,10 @@ export class GameScene extends Phaser.Scene {
 
   private buy(kind: ShopKind): void {
     if (this.helpOpen || this.finished) return;
-    const item = SHOP.find((entry) => entry.kind === kind);
+    const item = this.offers.find((entry) => entry.kind === kind);
     if (!item || this.credits < item.cost) return;
     if (item.kind === 'repair') {
-      const healed = this.battle.heal(BALANCE.repair.amount);
+      const healed = this.battle.heal(this.repairAmount);
       if (healed <= 0) return;
       this.credits -= item.cost;
       sfx.heal();
@@ -190,6 +211,63 @@ export class GameScene extends Phaser.Scene {
     this.battle.queueSpawn(item.kind);
     this.stats.unitsSpawned += 1;
     floatText(this, VIEW_W / 2, 400, item.name, item.kind === 'medic' ? '#5ee08f' : '#f4f1ea');
+  }
+
+  private drawBelt(): void {
+    this.save.belt.forEach((id, index) => {
+      const item = itemById(id);
+      if (!item) return;
+      const x = 70 + index * 88;
+      new UiButton(this, x, 484, 80, 28, item.name.split(' ')[0] ?? item.name, 0x243044, () => this.useBelt(id), {
+        fontSize: 10,
+        depth: 46,
+      });
+    });
+  }
+
+  private useBelt(id: string): void {
+    if (this.helpOpen || this.finished || this.board.isBusy()) return;
+    const item = itemById(id);
+    if (!item || item.kind !== 'consumable' || countOf(this.save, id) < 1) return;
+    if (item.effect === 'repair') {
+      const healed = this.battle.heal(Math.round((item.power ?? 80) * (this.repairAmount / BALANCE.repair.amount)));
+      if (healed <= 0) return;
+      if (!this.spendBelt(id)) return;
+      sfx.heal();
+      floatText(this, LANE.playerX, LANE.groundY - 36, `+${healed} BASE`, '#5ee08f');
+      return;
+    }
+    if (item.effect === 'charge') {
+      if (this.superCharge >= BALANCE.superMax) return;
+      if (!this.spendBelt(id)) return;
+      this.superCharge = Math.min(BALANCE.superMax, this.superCharge + (item.power ?? 40));
+      floatText(this, VIEW_W / 2, 80, 'CHARGE', '#c45bff');
+      return;
+    }
+    if (item.effect === 'airstrike') {
+      if (!this.spendBelt(id)) return;
+      sfx.strike('missiles');
+      this.battle.playStrike('missiles');
+      return;
+    }
+    if (item.effect === 'bomb') {
+      if (!this.board.plantBomb()) return;
+      if (!this.spendBelt(id)) return;
+      floatText(this, VIEW_W / 2, 500, 'BOMB', '#c45bff');
+      return;
+    }
+    if (item.effect === 'shuffle') {
+      if (!this.spendBelt(id)) return;
+      void this.board.useShuffle();
+    }
+  }
+
+  private spendBelt(id: string): boolean {
+    const next = consumeItem(this.save, id);
+    if (!next.ok) return false;
+    this.save = next.save;
+    writeProgress(this.save);
+    return true;
   }
 
   private fire(): void {
@@ -333,7 +411,7 @@ export class GameScene extends Phaser.Scene {
 const GEM_CSS_NUM = GEM_HEX;
 
 function spawnColor(kind: string): GemColor {
-  if (kind === 'tank' || kind === 'heavy' || kind === 'artillery') return 'tank';
+  if (kind === 'tank' || kind === 'heavy' || kind === 'artillery' || kind === 'ship') return 'tank';
   if (kind === 'heli') return 'heli';
   if (kind === 'medic') return 'infantry';
   if (kind === 'rocket') return 'infantry';

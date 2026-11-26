@@ -66,9 +66,9 @@ export class TitleScene extends Phaser.Scene {
       .setOrigin(0, 0);
 
     new UiButton(this, VIEW_W / 2, 760, 280, 60, 'CAMPAIGN', 0x149684, () => {
-      void sfx.unlock().then(() => this.scene.start('map'));
+      void sfx.unlock().then(() => this.scene.start('commander'));
     }, { fontSize: 24 });
-    new UiButton(this, VIEW_W / 2, 834, 220, 48, 'UPGRADES', 0x2a3344, () => this.scene.start('upgrades'), {
+    new UiButton(this, VIEW_W / 2, 834, 220, 48, 'MAIN HQ', 0x2a3344, () => this.scene.start('hq'), {
       fontSize: 16,
     });
 

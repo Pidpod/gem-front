@@ -1,5 +1,5 @@
-import { BALANCE, SHOP } from '../../config/balance';
-import { COMMAND, commandButtonX, HUD } from '../layout';
+import { BALANCE, type ShopEntry } from '../../config/balance';
+import { COMMAND, HUD, VIEW_W } from '../layout';
 import { FONT, GEM_HEX, MUTED } from '../theme';
 import type { ShopKind } from '../types';
 import { UiButton } from './button';
@@ -31,10 +31,11 @@ export class Hud {
   private readonly meterText: Phaser.GameObjects.Text;
   private readonly fire: UiButton;
   private readonly shop: UiButton[];
+  private readonly entries: ShopEntry[];
   private readonly mute: UiButton;
   private lastKey = '';
 
-  constructor(scene: Phaser.Scene, handlers: HudHandlers) {
+  constructor(scene: Phaser.Scene, handlers: HudHandlers, shop: ShopEntry[]) {
     this.bars = scene.add.graphics().setDepth(40);
     this.meter = scene.add.graphics().setDepth(40);
     this.playerText = scene.add
@@ -87,17 +88,24 @@ export class Hud {
     });
 
     this.fire = new UiButton(scene, 424, 58, 100, 34, 'SUPER', 0x6a3cae, handlers.onFire, { fontSize: 14 });
-    this.shop = SHOP.map((item, index) => {
+    this.entries = shop;
+    const count = Math.max(1, shop.length);
+    const gap = 6;
+    const buttonW = Math.min(COMMAND.buttonW, Math.floor((VIEW_W - 16 - gap * (count - 1)) / count));
+    const buttonH = count > 3 ? 50 : COMMAND.buttonH;
+    this.shop = shop.map((item, index) => {
+      const total = buttonW * count + gap * (count - 1);
+      const x = (VIEW_W - total) / 2 + buttonW / 2 + index * (buttonW + gap);
       return new UiButton(
         scene,
-        commandButtonX(index),
+        x,
         COMMAND.buttonY,
-        COMMAND.buttonW,
-        COMMAND.buttonH,
+        buttonW,
+        buttonH,
         item.name,
-        item.kind === 'medic' ? 0x2f8a4e : item.kind === 'repair' ? 0x1f7a78 : 0x8a6230,
+        shopColor(item.kind),
         () => handlers.onBuy(item.kind),
-        { sub: `${item.cost}  ${item.blurb}`, fontSize: 15 },
+        { sub: `${item.cost}`, fontSize: count > 3 ? 12 : 15 },
       );
     });
     this.drawLegend(scene);
@@ -125,7 +133,7 @@ export class Hud {
       this.meterText.setText(String(Math.round(model.superCharge)));
       this.mute.setLabel(model.muted ? 'OFF' : 'SFX');
       this.mute.setFill(model.muted ? 0x3a3038 : 0x2a3344);
-      SHOP.forEach((item, index) => {
+      this.entries.forEach((item, index) => {
         const button = this.shop[index];
         button?.setEnabled(model.credits >= item.cost && !model.locked);
       });
@@ -191,6 +199,15 @@ function paintBar(
   g.fillRoundedRect(x, y, w, h, 7);
   g.fillStyle(color, 1);
   g.fillRoundedRect(x, y, Math.max(8, w * pct), h, 7);
+}
+
+function shopColor(kind: ShopKind): number {
+  if (kind === 'medic') return 0x2f8a4e;
+  if (kind === 'repair') return 0x1f7a78;
+  if (kind === 'ship') return 0x1d4e78;
+  if (kind === 'rocket') return 0x8a6230;
+  if (kind === 'artillery') return 0x6a5340;
+  return 0x8a6230;
 }
 
 function clamp01(value: number): number {

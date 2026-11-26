@@ -24,6 +24,7 @@ const LOOK: Record<UnitKind, string> = {
   rocket: 'px-rocket',
   heavy: 'px-heavy',
   artillery: 'px-artillery',
+  ship: 'px-ship',
 };
 
 export class Battlefield {
@@ -149,7 +150,7 @@ export class Battlefield {
     const spec = BALANCE.strikes[kind];
     const center = this.impactX('player');
       if (spec.allyRepair > 0) {
-        const healed = this.heal(spec.allyRepair);
+        const healed = this.heal(Math.round(spec.allyRepair * this.tuning.repairMul));
         if (healed > 0) {
           sfx.heal();
           this.plusBurst(LANE.playerX, LANE.groundY - 24);
@@ -265,7 +266,7 @@ export class Battlefield {
   private applyEvents(events: BattleEvent[]): void {
     for (const event of events) {
       if (event.type === 'attack') this.shot(event);
-      else if (event.type === 'dead') this.boom(event.x, event.y, event.kind === 'tank' || event.kind === 'heavy' ? 2 : 1.3);
+      else if (event.type === 'dead') this.boom(event.x, event.y, event.kind === 'tank' || event.kind === 'heavy' || event.kind === 'ship' ? 2 : 1.3);
       else if (event.type === 'heal') this.healBeam(event);
       else if (event.type === 'spawn' && event.side === 'enemy') sfx.spawn('enemy');
       else if (event.type === 'base') {
@@ -326,7 +327,7 @@ export class Battlefield {
     const body = this.scene.add.sprite(0, unit.kind === 'heli' ? 0 : 6, key, '0');
     body.setOrigin(0.5, unit.kind === 'heli' ? 0.5 : 0.9);
     const small = unit.kind === 'infantry' || unit.kind === 'rocket' || unit.kind === 'medic';
-    body.setScale(unit.kind === 'heli' ? 1.55 : small ? 1.65 : 1.4);
+    body.setScale(unit.kind === 'heli' ? 1.55 : unit.kind === 'ship' ? 1.7 : small ? 1.65 : 1.4);
     if (unit.side === 'enemy') body.setFlipX(true);
     const hp = this.scene.add.graphics();
     root.add([body, hp]);
@@ -541,6 +542,14 @@ export class Battlefield {
     for (let x = 16; x < VIEW_W - 16; x += 8) sky.fillRect(x, LANE.groundY + 18, 4, 2);
     sky.fillStyle(0x5e7a38, 1);
     for (let x = 20; x < VIEW_W - 20; x += 14) sky.fillRect(x, LANE.groundY - 6, 2, 4);
+    sky.fillStyle(0x1d4e78, 1);
+    sky.fillRect(8, LANE.bottom - 26, VIEW_W - 16, 26);
+    sky.fillStyle(0x8fd0f0, 0.35);
+    for (let x = 16; x < VIEW_W - 16; x += 18) sky.fillRect(x, LANE.bottom - 18, 8, 2);
+    if (this.tuning.regionTint) {
+      sky.fillStyle(this.tuning.regionTint, 0.22);
+      sky.fillRect(8, LANE.top, VIEW_W - 16, LANE.bottom - LANE.top);
+    }
     this.world.addAt(sky, 0);
 
     const paintCloud = (g: Phaser.GameObjects.Graphics, x: number) => {

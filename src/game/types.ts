@@ -6,11 +6,11 @@ export type GemColor = 'credit' | 'infantry' | 'tank' | 'heli' | 'super';
 
 export type Special = 'none' | 'lineRow' | 'lineCol' | 'bomb';
 
-export type UnitKind = 'infantry' | 'tank' | 'heli' | 'medic' | 'rocket' | 'heavy' | 'artillery';
+export type UnitKind = 'infantry' | 'tank' | 'heli' | 'medic' | 'rocket' | 'heavy' | 'artillery' | 'ship';
 
 export type StrikeKind = 'barrage' | 'shell' | 'missiles';
 
-export type ShopKind = 'medic' | 'repair' | 'heavy';
+export type ShopKind = 'medic' | 'repair' | 'heavy' | 'ship' | 'rocket' | 'artillery';
 
 export type Outcome = 'play' | 'win' | 'lose';
 

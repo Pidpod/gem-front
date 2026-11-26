@@ -5,5 +5,5 @@ export const HOW_TO_LINES = [
   'Blue sends helicopters. Purple fills the superweapon.',
   'Match 4 makes a line blast. Match 5 calls a special strike.',
   'Big green matches send a medic. Buy medics or base repair.',
-  'Units march and fight alone. Destroy the enemy base.',
+  'Liberate the map, rebuild cities, and spend funds at HQ.',
 ];
