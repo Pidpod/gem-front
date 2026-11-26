@@ -22,7 +22,7 @@ export class DialogueBox {
     onClose: (save: SaveData) => void,
   ) {
     installPortraits(scene);
-    this.lines = linesFor(talkId, save.commander);
+    this.lines = linesFor(talkId, save.commander, save.faction);
     const next = markSeen(save, talkId);
     writeProgress(next);
     this.root = scene.add.container(0, 0).setDepth(180);

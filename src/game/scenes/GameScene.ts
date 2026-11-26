@@ -6,7 +6,7 @@ import { HOW_TO_LINES } from '../copy';
 import { boardGeom, commandButtonX, COMMAND, LANE, VIEW_H, VIEW_W } from '../layout';
 import { tuningForLevel } from '../loadout';
 import { Board, type GemPop } from '../match3/Board';
-import { consumeItem, countOf, isCleared, isReachable, loadProgress, writeProgress, type SaveData } from '../progress';
+import { consumeItem, countOf, isCleared, isReachable, loadProgress, startNode, writeProgress, type SaveData } from '../progress';
 import type { MatchReward } from '../match3/rewards';
 import { Battlefield } from '../rts/Battlefield';
 import { FONT, GEM_CSS, GEM_HEX, INK } from '../theme';
@@ -46,8 +46,8 @@ export class GameScene extends Phaser.Scene {
 
   init(data?: { level?: number }): void {
     const save = loadProgress();
-    const requested = data?.level && data.level > 0 ? data.level : 1;
-    this.levelId = isReachable(save, requested) || isCleared(save, requested) ? requested : 1;
+    const requested = data?.level && data.level > 0 ? data.level : startNode(save);
+    this.levelId = isReachable(save, requested) || isCleared(save, requested) ? requested : startNode(save);
   }
 
   create(): void {

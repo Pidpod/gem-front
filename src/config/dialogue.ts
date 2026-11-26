@@ -8,6 +8,8 @@ export interface DialogueLine {
   text: string;
   /** Shown only when this commander is the one in the field. */
   lead?: CommanderId;
+  /** Shown only for that army. Shared lines omit this. */
+  faction?: 'azure' | 'crimson';
 }
 
 export interface DialogueDef {
@@ -55,6 +57,30 @@ export const DIALOGUES: DialogueDef[] = [
         speaker: 'Ivo',
         portrait: 'ivo',
         text: 'Matching the gems is not a trick. It is how this ground powers an army. Use it, or they will.',
+      },
+      {
+        faction: 'azure',
+        speaker: 'Mira',
+        portrait: 'mira',
+        text: 'The Coalition keeps the western shore. Their coil towers are already burning the far coast.',
+      },
+      {
+        faction: 'azure',
+        speaker: 'Holt',
+        portrait: 'holt',
+        text: 'Blue domes on our pads. Match the seam, and the prisms wake up.',
+      },
+      {
+        faction: 'crimson',
+        speaker: 'Mira',
+        portrait: 'mira',
+        text: 'The Directorate holds the eastern harbor. Their prisms are glaring on the western land.',
+      },
+      {
+        faction: 'crimson',
+        speaker: 'Ivo',
+        portrait: 'ivo',
+        text: 'Coil towers on the pads. We march until those domes go dark.',
       },
     ],
   },
@@ -224,8 +250,8 @@ export function dialogueById(id: string): DialogueDef | undefined {
   return DIALOGUES.find((entry) => entry.id === id);
 }
 
-export function linesFor(id: string, commander: CommanderId): DialogueLine[] {
+export function linesFor(id: string, commander: CommanderId, faction: 'azure' | 'crimson' = 'azure'): DialogueLine[] {
   const def = dialogueById(id);
   if (!def) return [];
-  return def.lines.filter((line) => !line.lead || line.lead === commander);
+  return def.lines.filter((line) => (!line.lead || line.lead === commander) && (!line.faction || line.faction === faction));
 }

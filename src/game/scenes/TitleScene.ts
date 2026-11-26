@@ -84,7 +84,7 @@ export class TitleScene extends Phaser.Scene {
       {
         label: continued ? 'CONTINUE' : 'CAMPAIGN',
         fill: 0x8a7040,
-        go: () => this.scene.start(continued ? 'map' : 'commander'),
+        go: () => this.scene.start(!save.factionPicked ? 'faction' : continued ? 'map' : 'commander'),
       },
       { label: 'COMMANDERS', fill: 0x5c5648, go: () => this.scene.start('commander', { back: 'title' }) },
       { label: 'HQ', fill: 0x5c5648, go: () => this.scene.start('hq') },
@@ -106,7 +106,9 @@ export class TitleScene extends Phaser.Scene {
     this.cameras.main.fadeIn(420, 8, 10, 14);
     this.input.keyboard?.on('keydown', (event: KeyboardEvent) => {
       if (event.repeat) return;
-      if (event.key === 'Enter' || event.key === ' ') this.scene.start(continued ? 'map' : 'commander');
+      if (event.key === 'Enter' || event.key === ' ') {
+        this.scene.start(!save.factionPicked ? 'faction' : continued ? 'map' : 'commander');
+      }
     });
   }
 

@@ -4,6 +4,7 @@ import { FLEET_COST } from '../config/hq';
 import { dropFor, itemById, xpGain, type GearSlot } from '../config/items';
 import { LEVELS, levelById, type LevelDef } from '../config/levels';
 import { UPGRADES, statAt, upgradeById, type UpgradeId } from '../config/upgrades';
+import { FACTIONS, isFactionId, type FactionId } from '../config/factions';
 import { neighbors } from '../config/world';
 import type { RunStats } from './types';
 
@@ -36,6 +37,10 @@ export interface SaveData {
   /** Consumable ids shown on the battle belt, at most four. */
   belt: string[];
   xp: Partial<Record<CommanderId, number>>;
+  /** Which fictional army the player leads. */
+  faction: FactionId;
+  /** False until the opening choice is confirmed. Old saves count as already chosen. */
+  factionPicked: boolean;
 }
 
 export interface MemoryStorage {
@@ -61,7 +66,17 @@ export function freshSave(): SaveData {
     equipped: {},
     belt: [],
     xp: {},
+    faction: 'azure',
+    factionPicked: false,
   };
+}
+
+export function startNode(save: SaveData): number {
+  return FACTIONS[save.faction].startNode;
+}
+
+export function homeRegion(save: SaveData) {
+  return FACTIONS[save.faction].startRegion;
 }
 
 export function priceOf(save: SaveData, cost: number): number {
@@ -73,9 +88,9 @@ export function isCleared(save: SaveData, id: number): boolean {
   return save.cleared.includes(id);
 }
 
-/** A node can be marched on once any neighboring road has been liberated, or it is the bastion. */
+/** A node can be marched on once any neighboring road has been liberated, or it is that faction's first beachhead. */
 export function isReachable(save: SaveData, id: number): boolean {
-  if (id === 1) return true;
+  if (id === startNode(save)) return true;
   return neighbors(id).some((next) => save.cleared.includes(next));
 }
 
@@ -368,6 +383,8 @@ function sanitize(raw: Partial<SaveData>): SaveData {
     equipped,
     belt,
     xp,
+    faction: typeof raw.faction === 'string' && isFactionId(raw.faction) ? raw.faction : 'azure',
+    factionPicked: typeof raw.factionPicked === 'boolean' ? raw.factionPicked : true,
   };
 }
 

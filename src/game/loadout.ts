@@ -4,6 +4,7 @@ import { commanderById } from '../config/commanders';
 import { itemById, levelForXp } from '../config/items';
 import { levelById, type LevelMix } from '../config/levels';
 import { multiplierFor, type UpgradeId } from '../config/upgrades';
+import type { FactionId } from '../config/factions';
 import { nodeById, regionById } from '../config/world';
 import type { SaveData } from './progress';
 import { loadProgress } from './progress';
@@ -33,6 +34,7 @@ export interface Tuning {
   spawnBonus: Partial<Record<UnitKind, number>>;
   startUnits: UnitKind[];
   regionTint: number;
+  faction: FactionId;
   boss: boolean;
   title: string;
   levelId: number;
@@ -62,6 +64,7 @@ export function defaultTuning(): Tuning {
     spawnBonus: {},
     startUnits: [],
     regionTint: 0,
+    faction: 'azure',
     boss: false,
     title: 'Destroy the enemy base',
     levelId: 1,
@@ -156,6 +159,7 @@ export function tuningForLevel(levelId: number, save: SaveData = loadProgress())
     spawnBonus,
     startUnits,
     regionTint: region.battleTint,
+    faction: save.faction,
     boss: level.boss,
     title: level.boss ? `${level.name} · BOSS` : level.name,
     levelId: level.id,

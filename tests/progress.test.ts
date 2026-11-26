@@ -14,8 +14,10 @@ import {
   freshSave,
   fundsFor,
   grantVictory,
+  isReachable,
   itemStocked,
   loadProgress,
+  startNode,
   resetProgress,
   scoreStars,
   setCommander,
@@ -101,6 +103,8 @@ describe('campaign progress', () => {
     assert.deepEqual(loaded.cleared, [1, 2]);
     assert.equal(loaded.commander, 'mira');
     assert.equal(loaded.fleet, false);
+    assert.equal(loaded.faction, 'azure');
+    assert.equal(loaded.factionPicked, true);
   });
 
   it('builds cities, fields commanders, and stocks the HQ', () => {
@@ -134,5 +138,19 @@ describe('campaign progress', () => {
     const cut = buyUpgrade({ ...freshSave(), funds: 50, discount: 0.5 }, UPGRADES[0]!.id);
     assert.equal(cut.ok, true);
     assert.equal(cut.save.funds, 25);
+  });
+
+  it('starts the crimson army on the eastern harbor', () => {
+    const azure = freshSave();
+    assert.equal(startNode(azure), 1);
+    assert.equal(isReachable(azure, 1), true);
+    assert.equal(isReachable(azure, 15), false);
+    const crimson = { ...freshSave(), faction: 'crimson' as const, factionPicked: true };
+    assert.equal(startNode(crimson), 15);
+    assert.equal(isReachable(crimson, 15), true);
+    assert.equal(isReachable(crimson, 1), false);
+    const opened = grantVictory(crimson, 15, emptyStats(), 1);
+    assert.equal(isReachable(opened.save, 13), true);
+    assert.equal(tuningForLevel(1, crimson).faction, 'crimson');
   });
 });
