@@ -3,14 +3,17 @@ import { levelById } from '../../config/levels';
 import { FACTIONS, garrison, pactPartner, skinFor } from '../../config/factions';
 import { GLOBE_H, GLOBE_W, PLATE_H, PLATE_W, TERRITORIES, platePos, territoryByRegion } from '../../config/globe';
 import { SITES } from '../../config/territories';
-import { commanderById } from '../../config/commanders';
+import { pinFor } from '../../config/pins';
+import { COMMANDERS, commanderById } from '../../config/commanders';
+import { buildingById } from '../../config/cities';
 import { levelForXp } from '../../config/items';
 import { NODES, PATHS, nodeById, regionById, route, type RegionId, type WorldNode } from '../../config/world';
+import { paintSphere, pinScreen, yawPitchFor } from '../art/sphere';
 import { installIso } from '../art/iso';
 import { installOverworld } from '../art/overworld';
 import { installArt } from '../art/sheets';
 import { VIEW_H, VIEW_W } from '../layout';
-import { homeRegion, isCleared, isReachable, loadProgress, resetProgress, startNode, writeProgress, type SaveData } from '../progress';
+import { commanderUnlocked, homeRegion, isCleared, isReachable, loadProgress, resetProgress, startNode, writeProgress, type SaveData } from '../progress';
 import { FONT, INK, MUTED } from '../theme';
 import { paintFrame, paintMetal } from '../ui/metal';
 import { DialogueBox } from '../ui/dialogueBox';
@@ -18,6 +21,11 @@ import { UiButton } from '../ui/button';
 
 const VIEW_TOP = 88;
 const VIEW_BOTTOM = 728;
+const GLOBE_CX = 240;
+const GLOBE_CY = 292;
+const GLOBE_R = 176;
+const GLOBE_SIZE = 300;
+const BRIEF_TOP = 508;
 
 export class MapScene extends Phaser.Scene {
   private save: SaveData = loadProgress();
@@ -41,6 +49,22 @@ export class MapScene extends Phaser.Scene {
   private dragStartY = 0;
   private worldStartX = 0;
   private worldStartY = 0;
+  private yaw = 0.5;
+  private pitch = 0.28;
+  private zoom = 1;
+  private yawStart = 0;
+  private pitchStart = 0;
+  private globeDrag = false;
+  private pinchDist = 0;
+  private targetId = 1;
+  private lastTap = 0;
+  private lastTapId = 0;
+  private tapTimer = 0;
+  private globeCanvas: HTMLCanvasElement | null = null;
+  private globeImage: Phaser.GameObjects.Image | null = null;
+  private pinLayer: Phaser.GameObjects.Graphics | null = null;
+  private pinText: Phaser.GameObjects.Text | null = null;
+  private briefLayer: Phaser.GameObjects.Container | null = null;
 
   constructor() {
     super('map');
@@ -68,8 +92,19 @@ export class MapScene extends Phaser.Scene {
     maskG.fillStyle(0xffffff, 1);
     maskG.fillRect(0, VIEW_TOP, VIEW_W, VIEW_BOTTOM - VIEW_TOP);
     this.world.setMask(maskG.createGeometryMask());
+    this.globeImage = null;
+    this.pinLayer = null;
+    this.pinText = null;
+    this.briefLayer = null;
+    this.globeCanvas = null;
+    if (this.textures.exists('campaign-globe')) this.textures.remove('campaign-globe');
     this.pos = this.bootNode();
     this.region = nodeById(this.pos).region;
+    this.targetId = this.nextTarget();
+    this.yaw = 0.5;
+    this.pitch = 0.28;
+    this.zoom = 1;
+    this.drawBrief();
     this.bindPointer();
     this.bootStory();
   }
@@ -127,11 +162,13 @@ export class MapScene extends Phaser.Scene {
       depth: 40,
     });
     new UiButton(this, 250, 800, 100, 48, 'SETUP', 0x4a453c, () => this.openSettings(), { fontSize: 12, depth: 40 });
-    this.globeButton = new UiButton(this, 360, 800, 100, 48, 'GLOBE', 0x2a4a6a, () => this.showWorld(), {
+    this.globeButton = new UiButton(this, 360, 800, 100, 48, 'PLATE', 0x2a4a6a, () => {
+      if (this.mode === 'world') this.enterRegion(nodeById(this.targetId).region);
+      else this.showWorld();
+    }, {
       fontSize: 12,
       depth: 40,
     });
-    this.globeButton.root.setVisible(false);
     this.drawPact();
   }
 
@@ -159,59 +196,236 @@ export class MapScene extends Phaser.Scene {
     return 'split';
   }
 
+  private nextTarget(): number {
+    const open = NODES.find((node) => !isCleared(this.save, node.id) && isReachable(this.save, node.id));
+    return open?.id ?? this.homeNode();
+  }
+
+  private mountGlobe(): void {
+    if (!this.globeCanvas) {
+      const canvas = document.createElement('canvas');
+      canvas.width = GLOBE_SIZE;
+      canvas.height = GLOBE_SIZE;
+      this.globeCanvas = canvas;
+      this.textures.addCanvas('campaign-globe', canvas)?.setFilter(Phaser.Textures.FilterMode.LINEAR);
+      this.globeImage = this.add.image(GLOBE_CX, GLOBE_CY, 'campaign-globe').setDisplaySize(GLOBE_R * 2 + 28, GLOBE_R * 2 + 28).setDepth(12);
+      this.pinLayer = this.add.graphics().setDepth(16);
+      this.pinText = this.add
+        .text(0, 0, '', { fontFamily: FONT, fontSize: '12px', color: INK, fontStyle: 'bold', stroke: '#10141c', strokeThickness: 3 })
+        .setOrigin(0.5, 1)
+        .setDepth(17);
+    }
+    this.globeImage?.setVisible(true);
+    this.pinLayer?.setVisible(true);
+    this.pinText?.setVisible(true);
+  }
+
+  private renderGlobe(_fast = false): void {
+    if (!this.globeCanvas || this.mode !== 'world') return;
+    const ctx = this.globeCanvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+    paintSphere(ctx, GLOBE_SIZE, this.yaw, this.pitch, this.zoom);
+    const texture = this.textures.get('campaign-globe');
+    if (texture instanceof Phaser.Textures.CanvasTexture) texture.refresh();
+    this.drawPins();
+  }
+
+  private drawPins(): void {
+    const g = this.pinLayer;
+    const label = this.pinText;
+    if (!g || !label) return;
+    g.clear();
+    const next = this.nextTarget();
+    const pulse = 0.45 + 0.55 * Math.abs(Math.sin(this.time.now / 220));
+    let named: { x: number; y: number; text: string } | null = null;
+    for (const site of SITES) {
+      const spot = pinScreen(site.id, this.yaw, this.pitch, this.zoom, GLOBE_CX, GLOBE_CY, this.screenRadius());
+      if (!spot) continue;
+      if (Math.hypot(spot.x - GLOBE_CX, spot.y - GLOBE_CY) > this.screenRadius() + 8) continue;
+      const color = this.pinColor(site.id, site.seed);
+      const contested = !isCleared(this.save, site.id) && (isReachable(this.save, site.id) || this.save.rivalHeld.some((entry) => entry.id === site.id));
+      const radius = site.id === next ? 7 : site.id > 15 ? 4 : 5.5;
+      g.fillStyle(0x061018, 0.85);
+      g.fillCircle(spot.x, spot.y, radius + 2);
+      g.fillStyle(color, contested ? 0.45 + pulse * 0.55 : 1);
+      g.fillCircle(spot.x, spot.y, radius);
+      if (site.id === next) {
+        g.lineStyle(2, 0xf0c43a, pulse);
+        g.strokeCircle(spot.x, spot.y, 12 + pulse * 4);
+        named = { x: spot.x, y: spot.y - 14, text: site.name };
+      } else if (this.zoom >= 1.55 || site.id === this.targetId) {
+        named = named ?? { x: spot.x, y: spot.y - 12, text: site.name };
+      }
+    }
+    if (named) {
+      label.setText(named.text).setPosition(named.x, named.y).setVisible(true);
+    } else label.setVisible(false);
+  }
+
+  private screenRadius(): number {
+    const display = GLOBE_R * 2 + 28;
+    return (display / 2) * ((GLOBE_SIZE - 8) / GLOBE_SIZE);
+  }
+
+  private pinColor(id: number, seed: string): number {
+    const faction = isCleared(this.save, id)
+      ? this.save.faction
+      : (this.save.rivalHeld.find((entry) => entry.id === id)?.faction ?? (seed === 'open' ? 'neutral' : seed));
+    if (faction === 'azure') return 0x3a78c8;
+    if (faction === 'crimson') return 0xc4473a;
+    if (faction === 'frost') return 0xe8f4ff;
+    return 0x9aa3ad;
+  }
+
+  private hitPin(x: number, y: number): number | null {
+    let best: number | null = null;
+    let bestDist = 22;
+    for (const site of SITES) {
+      const spot = pinScreen(site.id, this.yaw, this.pitch, this.zoom, GLOBE_CX, GLOBE_CY, this.screenRadius());
+      if (!spot) continue;
+      const dist = Math.hypot(spot.x - x, spot.y - y);
+      if (dist < bestDist) {
+        best = site.id;
+        bestDist = dist;
+      }
+    }
+    return best;
+  }
+
+  private onGlobeTap(x: number, y: number): void {
+    const hit = this.hitPin(x, y);
+    const now = this.time.now;
+    if (hit && hit === this.lastTapId && now - this.lastTap < 320) {
+      window.clearTimeout(this.tapTimer);
+      this.lastTap = 0;
+      this.zoomTo(hit);
+      return;
+    }
+    this.lastTap = now;
+    this.lastTapId = hit ?? 0;
+    if (!hit) return;
+    this.targetId = hit;
+    this.refreshBrief();
+    this.renderGlobe(false);
+    window.clearTimeout(this.tapTimer);
+    if (isCleared(this.save, hit) || isReachable(this.save, hit)) {
+      this.tapTimer = window.setTimeout(() => {
+        if (this.mode === 'world' && !this.globeDrag) this.openPanel(hit);
+      }, 280);
+    }
+  }
+
+  private zoomTo(id: number): void {
+    const aim = yawPitchFor(pinFor(id).lat, pinFor(id).lon);
+    const view = { yaw: this.yaw, pitch: this.pitch, zoom: this.zoom };
+    this.targetId = id;
+    this.refreshBrief();
+    this.tweens.add({
+      targets: view,
+      yaw: aim.yaw,
+      pitch: Math.max(-1, Math.min(1, aim.pitch)),
+      zoom: 2.35,
+      duration: 460,
+      onUpdate: () => {
+        this.yaw = view.yaw;
+        this.pitch = view.pitch;
+        this.zoom = view.zoom;
+        this.renderGlobe(true);
+      },
+      onComplete: () => this.renderGlobe(false),
+    });
+  }
+
+  private drawBrief(): void {
+    const layer = this.add.container(0, 0).setDepth(33).setVisible(false);
+    const panel = this.add.graphics();
+    paintMetal(panel, 8, BRIEF_TOP, VIEW_W - 16, VIEW_BOTTOM - BRIEF_TOP - 8, 0x3a342c);
+    const how = this.add.text(20, BRIEF_TOP + 12, 'Drag to turn. Pinch or scroll to zoom. Double-tap a pin.', {
+      fontFamily: FONT,
+      fontSize: '12px',
+      color: MUTED,
+      wordWrap: { width: VIEW_W - 40 },
+    });
+    const unlocked = this.add.text(20, BRIEF_TOP + 48, '', {
+      fontFamily: FONT,
+      fontSize: '12px',
+      color: INK,
+      wordWrap: { width: VIEW_W - 40 },
+    });
+    const next = this.add.text(20, BRIEF_TOP + 96, '', {
+      fontFamily: FONT,
+      fontSize: '13px',
+      color: '#f0c43a',
+      wordWrap: { width: VIEW_W - 40 },
+    });
+    const target = this.add
+      .text(20, BRIEF_TOP + 132, '', {
+        fontFamily: FONT,
+        fontSize: '15px',
+        color: '#8ff6e4',
+        fontStyle: 'bold',
+        wordWrap: { width: VIEW_W - 40 },
+      })
+      .setInteractive({ useHandCursor: true });
+    target.on('pointerup', () => this.zoomTo(this.targetId));
+    layer.add([panel, how, unlocked, next, target]);
+    this.briefLayer = layer;
+    layer.setData('unlocked', unlocked);
+    layer.setData('next', next);
+    layer.setData('target', target);
+  }
+
+  private refreshBrief(): void {
+    const layer = this.briefLayer;
+    if (!layer) return;
+    const unlocked = layer.getData('unlocked') as Phaser.GameObjects.Text;
+    const next = layer.getData('next') as Phaser.GameObjects.Text;
+    const target = layer.getData('target') as Phaser.GameObjects.Text;
+    const names = COMMANDERS.filter((entry) => commanderUnlocked(this.save, entry.id)).map((entry) => entry.name);
+    const hq = this.save.buildings.map((id) => buildingById(id)?.name).filter((name): name is string => Boolean(name));
+    const perkCount = this.save.cleared.length;
+    unlocked.setText(
+      `Unlocked so far: ${names.join(', ') || 'none'}\nHQ: ${hq.length ? hq.join(', ') : 'none'} · ${perkCount} perk${perkCount === 1 ? '' : 's'}`,
+    );
+    const goal = this.nextTarget();
+    const goalName = levelById(goal).name;
+    next.setText(isCleared(this.save, goal) ? 'Next objective: hold what you freed.' : `Next objective: liberate ${goalName}.`);
+    const site = SITES.find((entry) => entry.id === this.targetId);
+    target.setText(`Target: ${site?.name ?? goalName}  ·  tap to zoom`);
+  }
+
   private showWorld(): void {
     this.mode = 'world';
     this.mapW = GLOBE_W;
     this.mapH = GLOBE_H;
-    this.globeButton.root.setVisible(false);
+    this.globeButton.root.setVisible(true);
+    this.globeButton.setLabel('PLATE');
     this.placeLabel.setText('');
     this.world.removeAll(true);
+    this.world.setPosition(0, 0);
     this.token = null;
-    const map = this.add.image(0, 0, 'ow-globe').setOrigin(0, 0);
-    this.world.add(map);
-    const marks = this.add.graphics();
-    for (const territory of TERRITORIES) {
-      const state = this.hold(territory.region);
-      const playerColor = this.save.faction === 'azure' ? 0x3a78c8 : 0xc4473a;
-      const enemyColor = this.save.faction === 'azure' ? 0xc4473a : 0x3a78c8;
-      const color = state === 'player' ? playerColor : state === 'enemy' ? enemyColor : 0xe6c14a;
-      marks.fillStyle(color, state === 'split' ? 0.45 : 0.62);
-      marks.fillEllipse(territory.x, territory.y, 108, 64);
-      marks.lineStyle(2, state === 'player' ? 0xf4f1ea : color, 0.9);
-      marks.strokeEllipse(territory.x, territory.y, 108, 64);
-    }
-    this.world.add(marks);
-    const sites = this.add.graphics();
-    for (const site of SITES) {
-      const owned = isCleared(this.save, site.id);
-      const color = owned ? 0xf4f1ea : site.seed === 'azure' ? 0x3a78c8 : site.seed === 'crimson' ? 0xc4473a : site.seed === 'frost' ? 0xd5e6f5 : 0xc4a15a;
-      sites.fillStyle(color, 1);
-      sites.fillCircle(site.x, site.y, site.id > 15 ? 4 : 6);
-    }
-    this.world.add(sites);
-    for (const territory of TERRITORIES) {
-      const open = NODES.some((node) => node.region === territory.region && (isCleared(this.save, node.id) || isReachable(this.save, node.id)));
-      const label = this.add
-        .text(territory.x, territory.y + 28, territory.name, {
-          fontFamily: FONT,
-          fontSize: '13px',
-          color: open ? INK : '#d7d0c4',
-          fontStyle: 'bold',
-        })
-        .setOrigin(0.5, 0);
-      this.world.add(label);
-    }
-    const home = territoryByRegion(homeRegion(this.save));
-    this.scrollToPoint(home.x, home.y);
-    this.addCloud();
+    this.briefLayer?.setVisible(true);
+    this.mountGlobe();
+    const home = pinFor(this.homeNode());
+    const aim = yawPitchFor(home.lat, home.lon);
+    this.yaw = aim.yaw;
+    this.pitch = Math.max(-1, Math.min(1, aim.pitch));
+    this.zoom = 1;
+    this.refreshBrief();
+    this.renderGlobe(false);
   }
 
   private showRegion(region: RegionId): void {
     this.mode = 'region';
     this.region = region;
+    this.globeImage?.setVisible(false);
+    this.pinLayer?.setVisible(false);
+    this.pinText?.setVisible(false);
+    this.briefLayer?.setVisible(false);
     this.mapW = PLATE_W;
     this.mapH = PLATE_H;
     this.globeButton.root.setVisible(true);
+    this.globeButton.setLabel('GLOBE');
     this.placeLabel.setText(territoryByRegion(region).name.toUpperCase());
     this.world.removeAll(true);
     const plate = this.add.image(0, 0, `ow-plate-${region}`).setOrigin(0, 0);
@@ -375,6 +589,17 @@ export class MapScene extends Phaser.Scene {
 
   private bindPointer(): void {
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      if (this.mode === 'world' && pointer.y >= VIEW_TOP && pointer.y < BRIEF_TOP) {
+        this.globeDrag = true;
+        this.moved = false;
+        this.dragStartX = pointer.x;
+        this.dragStartY = pointer.y;
+        this.yawStart = this.yaw;
+        this.pitchStart = this.pitch;
+        const other = pointer.id === this.input.pointer1.id ? this.input.pointer2 : this.input.pointer1;
+        this.pinchDist = other.isDown ? Math.hypot(pointer.x - other.x, pointer.y - other.y) : 0;
+        return;
+      }
       if (pointer.y < VIEW_TOP || pointer.y > VIEW_BOTTOM) return;
       this.dragging = true;
       this.moved = false;
@@ -384,6 +609,24 @@ export class MapScene extends Phaser.Scene {
       this.worldStartY = this.world.y;
     });
     this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+      if (this.globeDrag && this.mode === 'world') {
+        const other = pointer.id === this.input.pointer1.id ? this.input.pointer2 : this.input.pointer1;
+        if (other.isDown) {
+          const dist = Math.hypot(pointer.x - other.x, pointer.y - other.y);
+          if (this.pinchDist > 8) this.zoom = Math.max(1, Math.min(3.2, this.zoom * (dist / this.pinchDist)));
+          this.pinchDist = dist;
+          this.moved = true;
+          this.renderGlobe(true);
+          return;
+        }
+        const dx = pointer.x - this.dragStartX;
+        const dy = pointer.y - this.dragStartY;
+        if (Math.hypot(dx, dy) > 8) this.moved = true;
+        this.yaw = this.yawStart - dx * 0.01;
+        this.pitch = Math.max(-1.05, Math.min(1.05, this.pitchStart + dy * 0.01));
+        this.renderGlobe(true);
+        return;
+      }
       if (!this.dragging) return;
       const dx = pointer.x - this.dragStartX;
       const dy = pointer.y - this.dragStartY;
@@ -391,39 +634,30 @@ export class MapScene extends Phaser.Scene {
       this.world.x = this.clampX(this.worldStartX + dx);
       this.world.y = this.clampY(this.worldStartY + dy);
     });
+    this.input.on('wheel', (pointer: Phaser.Input.Pointer, _over: unknown, _dx: number, dy: number) => {
+      if (this.mode !== 'world' || pointer.y >= BRIEF_TOP) return;
+      this.zoom = Math.max(1, Math.min(3.2, this.zoom * (dy < 0 ? 1.08 : 0.92)));
+      this.renderGlobe(false);
+    });
     this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+      if (this.globeDrag) {
+        const dragged = this.moved;
+        this.globeDrag = false;
+        this.pinchDist = 0;
+        if (dragged || this.busy || this.uiLock || this.settings) {
+          this.renderGlobe(false);
+          return;
+        }
+        this.onGlobeTap(pointer.x, pointer.y);
+        return;
+      }
       const wasDrag = this.moved;
       this.dragging = false;
       if (wasDrag || this.busy || this.uiLock || this.settings) return;
       if (pointer.y < VIEW_TOP || pointer.y > VIEW_BOTTOM) return;
       const wx = pointer.x - this.world.x;
       const wy = pointer.y - this.world.y;
-      if (this.mode === 'world') {
-        let nearSite: number | null = null;
-        let nearDist = 18;
-        for (const site of SITES) {
-          const dist = Math.hypot(site.x - wx, site.y - wy);
-          if (dist < nearDist) {
-            nearSite = site.id;
-            nearDist = dist;
-          }
-        }
-        if (nearSite && (isCleared(this.save, nearSite) || isReachable(this.save, nearSite))) {
-          this.scene.start('game', { level: nearSite });
-          return;
-        }
-        let best: (typeof TERRITORIES)[number] | null = null;
-        let bestDist = 70;
-        for (const territory of TERRITORIES) {
-          const dist = Math.hypot(territory.x - wx, territory.y - wy);
-          if (dist < bestDist) {
-            best = territory;
-            bestDist = dist;
-          }
-        }
-        if (best) this.enterRegion(best.region);
-        return;
-      }
+      if (this.mode === 'world') return;
       let bestNode: WorldNode | null = null;
       let bestDist = 46;
       for (const node of NODES) {
