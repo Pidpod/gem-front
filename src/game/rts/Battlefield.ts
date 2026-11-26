@@ -152,6 +152,22 @@ export class Battlefield {
     return this.sim.outcome;
   }
 
+  /** Visual salvo for the end-of-level bonus. No extra base damage. */
+  salvo(power: 'line' | 'bomb'): void {
+    const x = this.impactX('player');
+    if (power === 'bomb') {
+      this.boom(x, LANE.groundY - 8, 3.4);
+      this.debris(x, LANE.groundY - 8, 10);
+      this.flash(0.4);
+      this.nudge(9);
+    } else {
+      this.boom(x, LANE.groundY - 4, 1.8);
+      this.debris(x, LANE.groundY, 5);
+      this.nudge(4);
+    }
+    sfx.explosion();
+  }
+
   /** Match-5 highlight. Damage lands when the projectile hits. */
   playStrike(kind: StrikeKind): void {
     const spec = BALANCE.strikes[kind];

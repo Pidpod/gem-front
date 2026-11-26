@@ -1,16 +1,18 @@
 import { sfx } from '../../audio/sfx';
 import { BALANCE } from '../../config/balance';
-import { boardGeom, cellCenter } from '../layout';
+import { boardGeom, cellCenter, VIEW_H, VIEW_W } from '../layout';
 import { GEM_HEX } from '../theme';
 import type { Cell, GemColor, Pos, Rng, Special } from '../types';
 import { paintMetal } from '../ui/metal';
 import { drawGem } from './drawGem';
+import { blastPoints } from './bonus';
 import {
   activationForSwap,
   adjacent,
   createInitialGrid,
   ensurePlayable,
   pasteGrid,
+  posKey,
   resolveStep,
   samePos,
   swapActivates,
@@ -46,6 +48,12 @@ export interface CellSnapshot {
 function wait(scene: Phaser.Scene, ms: number): Promise<void> {
   return new Promise((resolve) => {
     scene.time.delayedCall(ms, () => resolve());
+  });
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
   });
 }
 
@@ -513,6 +521,142 @@ export class Board {
     this.resolving = false;
     this.idle = 0;
     return true;
+  }
+
+  /**
+   * End-of-level bonus. Plants extra power gems, then detonates every special
+   * one by one. Cascades score too. `skip` shortens the waits.
+   */
+  async bonusBlast(opts: {
+    extras: number;
+    skip: () => boolean;
+    onStep: (points: number, pops: GemPop[], combo: number) => void;
+  }): Promise<number> {
+    if (!this.scene.sys.isActive()) return 0;
+    this.clearHint();
+    this.selected = null;
+    this.resolving = true;
+    this.plantExtras(opts.extras);
+    this.syncFromGrid();
+    if (!opts.skip()) await sleep(320);
+    let total = 0;
+    let guard = 0;
+    while (guard < 40 && this.scene.sys.isActive()) {
+      const specials = this.specials();
+      const pos = specials[0];
+      if (!pos) break;
+      guard += 1;
+      const cell = this.grid[pos.r]?.[pos.c];
+      const kind = cell?.special ?? 'lineRow';
+      const bombTargets = new Map<string, GemColor | 'all'>();
+      if (cell?.special === 'bomb') bombTargets.set(posKey(pos), cell.color);
+      let combo = 1;
+      let first = true;
+      while (combo <= BALANCE.match.maxCascades && this.scene.sys.isActive()) {
+        const step = resolveStep(this.grid, first ? { activate: [pos], bombTargets, rng: this.rng } : { rng: this.rng });
+        if (!step) break;
+        first = false;
+        const specialsCleared = step.cleared.filter((entry) => entry.cell.special !== 'none').length;
+        const points = blastPoints(rewardForStep(step, combo).credits, specialsCleared, combo);
+        const pops = step.cleared.slice(0, 8).map(({ cell: cleared, pos: at }) => {
+          const point = cellCenter(at.c, at.r);
+          return { x: point.x, y: point.y, color: cleared.color };
+        });
+        total += points;
+        opts.onStep(points, pops, combo);
+        const focus = pops[0] ?? cellCenter(pos.c, pos.r);
+        this.blastFx(focus.x, focus.y, kind);
+        if (opts.skip()) {
+          this.syncFromGrid();
+          await sleep(36);
+        } else {
+          await this.animateStep(step, 4 + combo);
+          await sleep(160);
+        }
+        combo += 1;
+      }
+    }
+    if (this.scene.sys.isActive()) {
+      ensurePlayable(this.grid, this.rng);
+      this.syncFromGrid();
+    }
+    this.resolving = false;
+    return total;
+  }
+
+  private specials(): Pos[] {
+    const list: Pos[] = [];
+    for (let r = 0; r < this.geom.rows; r++) {
+      for (let c = 0; c < this.geom.cols; c++) {
+        const cell = this.grid[r]?.[c];
+        if (cell && cell.special !== 'none') list.push({ r, c });
+      }
+    }
+    return list;
+  }
+
+  private plantExtras(count: number): void {
+    const kinds: Special[] = ['lineRow', 'lineCol', 'bomb'];
+    for (let n = 0; n < count; n++) {
+      const spots: Pos[] = [];
+      for (let r = 0; r < this.geom.rows; r++) {
+        for (let c = 0; c < this.geom.cols; c++) {
+          const cell = this.grid[r]?.[c];
+          if (cell && cell.special === 'none') spots.push({ r, c });
+        }
+      }
+      if (spots.length === 0) return;
+      const spot = spots[Math.floor(this.rng() * spots.length)];
+      const cell = spot ? this.grid[spot.r]?.[spot.c] : undefined;
+      if (!cell || !spot) return;
+      cell.special = kinds[Math.floor(this.rng() * kinds.length)] ?? 'bomb';
+    }
+  }
+
+  private blastFx(x: number, y: number, special: Special): void {
+    const heavy = special === 'bomb';
+    if (this.scene.textures.exists('iso-boom')) {
+      const boom = this.scene.add.sprite(x, y, 'iso-boom', '0').setScale(heavy ? 2.3 : 1.55).setDepth(62);
+      this.scene.tweens.addCounter({
+        from: 0,
+        to: 4,
+        duration: 320,
+        onUpdate: (tween) => boom.setFrame(String(Math.min(4, Math.floor(tween.getValue() ?? 0)))),
+        onComplete: () => boom.destroy(),
+      });
+    }
+    const ring = this.scene.add.circle(x, y, 12).setStrokeStyle(heavy ? 6 : 3, 0xffc14a, 0.95).setDepth(63);
+    this.scene.tweens.add({
+      targets: ring,
+      scale: heavy ? 5.4 : 3.2,
+      alpha: 0,
+      duration: 300,
+      onComplete: () => ring.destroy(),
+    });
+    const flash = this.scene.add
+      .rectangle(VIEW_W / 2, VIEW_H / 2, VIEW_W, VIEW_H, 0xfff1c4, heavy ? 0.42 : 0.22)
+      .setDepth(72);
+    this.scene.tweens.add({
+      targets: flash,
+      alpha: 0,
+      duration: 160,
+      onComplete: () => flash.destroy(),
+    });
+    for (let i = 0; i < (heavy ? 12 : 7); i++) {
+      const dot = this.scene.add.circle(x, y, i % 2 === 0 ? 4 : 2.5, i % 3 === 0 ? 0xfff1c4 : 0xe24b4b, 1).setDepth(64);
+      const angle = (Math.PI * 2 * i) / (heavy ? 12 : 7);
+      const reach = heavy ? 54 : 32;
+      this.scene.tweens.add({
+        targets: dot,
+        x: x + Math.cos(angle) * reach,
+        y: y + Math.sin(angle) * reach,
+        alpha: 0,
+        duration: 280,
+        onComplete: () => dot.destroy(),
+      });
+    }
+    this.shake(heavy ? 11 : 7);
+    sfx.explosion();
   }
 
   /** Plants a color bomb on a random plain gem. */
