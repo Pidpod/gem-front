@@ -46,7 +46,7 @@ function scoreSwap(grid: Grid, a: Pos, b: Pos): number {
     if (!step) break;
     first = false;
     const reward = rewardForStep(step, combo);
-    total += reward.credits * 0.55 + reward.repair * 0.9 + reward.super * 0.75 + reward.cleared;
+    total += reward.credits * 0.55 + reward.super * 0.75 + reward.cleared + reward.strikes.length * 36;
     for (const spawn of reward.spawns) total += spawn.count * (spawn.kind === 'tank' ? 48 : 34);
     if (reward.big) total += 10;
   }

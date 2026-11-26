@@ -12,7 +12,7 @@ import {
 import { rewardForStep } from '../src/game/match3/rewards';
 import { LANE } from '../src/game/layout';
 import { BattleSim } from '../src/game/rts/sim';
-import type { Outcome, Rng, ShopKind } from '../src/game/types';
+import type { Outcome, Rng } from '../src/game/types';
 
 function mulberry32(seed: number): Rng {
   let a = seed >>> 0;
@@ -53,7 +53,7 @@ function simulate(seed: number, pace: number): Summary {
       if (!step) break;
       first = false;
       const reward = rewardForStep(step, combo);
-      total += reward.credits * 0.6 + reward.repair * 0.8 + reward.super * 0.7;
+      total += reward.credits * 0.6 + reward.super * 0.7 + reward.strikes.length * 20;
       for (const spawn of reward.spawns) total += spawn.count * (spawn.kind === 'tank' ? 46 : 32);
       if (reward.big) total += 8;
     }
@@ -89,7 +89,6 @@ function simulate(seed: number, pace: number): Summary {
           const reward = rewardForStep(step, combo);
           credits += reward.credits;
           superCharge = Math.min(BALANCE.superMax, superCharge + reward.super);
-          sim.heal(reward.repair);
           for (const spawn of reward.spawns) {
             for (let i = 0; i < spawn.count; i++) sim.spawn('player', spawn.kind);
           }
@@ -103,7 +102,7 @@ function simulate(seed: number, pace: number): Summary {
       if (sim.outcome === 'play') {
         const enemies = sim.units.filter((unit) => unit.side === 'enemy').length;
         const friends = sim.units.filter((unit) => unit.side === 'player').length;
-        const order: ShopKind[] = enemies > friends ? ['heavy', 'rocket', 'artillery'] : ['rocket', 'artillery', 'heavy'];
+        const order: ('heavy' | 'medic')[] = enemies > friends ? ['heavy', 'medic'] : ['medic', 'heavy'];
         for (const kind of order) {
           const cost = shopCost(kind);
           if (credits >= cost && friends < 10) {
@@ -159,6 +158,23 @@ describe('battle', () => {
     assert.ok(events.some((event) => event.type === 'super'));
     assert.ok(sim.enemyHp < before);
     assert.ok(sim.units.every((unit) => unit.side === 'player' || unit.hp < unit.maxHp));
+  });
+
+  it('a medic stays behind a friend and heals them', () => {
+    const sim = new BattleSim(() => 0.2);
+    sim.spawn('player', 'infantry');
+    sim.spawn('player', 'medic');
+    const troop = sim.units.find((unit) => unit.kind === 'infantry');
+    const medic = sim.units.find((unit) => unit.kind === 'medic');
+    assert.ok(troop && medic);
+    troop.x = 220;
+    troop.hp = 10;
+    medic.x = 180;
+    const before = troop.hp;
+    for (let i = 0; i < 8; i++) sim.update(0.2);
+    assert.ok(troop.hp > before);
+    assert.ok(medic.x < troop.x);
+    assert.equal(sim.enemyHp, sim.enemyMax);
   });
 
   it('repairs without passing max hp', () => {

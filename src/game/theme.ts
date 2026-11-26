@@ -10,17 +10,17 @@ export const CORAL = '#ff6b5b';
 
 export const GEM_HEX: Record<GemColor, number> = {
   credit: 0xf0c43a,
-  infantry: 0xe24b4b,
-  armor: 0x4c8dff,
-  repair: 0x3ecf7a,
+  infantry: 0x3ecf7a,
+  tank: 0xe24b4b,
+  heli: 0x4c8dff,
   super: 0xc45bff,
 };
 
 export const GEM_CSS: Record<GemColor, string> = {
   credit: '#f0c43a',
-  infantry: '#ff6b6b',
-  armor: '#7aabff',
-  repair: '#5ee08f',
+  infantry: '#5ee08f',
+  tank: '#ff6b6b',
+  heli: '#7ab0ff',
   super: '#d58bff',
 };
 

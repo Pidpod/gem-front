@@ -1,6 +1,7 @@
 import { sfx } from '../../audio/sfx';
 import { BALANCE } from '../../config/balance';
 import { boardGeom, cellCenter } from '../layout';
+import { GEM_HEX } from '../theme';
 import type { Cell, GemColor, Pos, Rng, Special } from '../types';
 import { drawGem } from './drawGem';
 import {
@@ -63,10 +64,17 @@ function glide(scene: Phaser.Scene, target: Phaser.GameObjects.Container, x: num
   });
 }
 
+export interface GemPop {
+  x: number;
+  y: number;
+  color: GemColor;
+}
+
 export class Board {
   private readonly scene: Phaser.Scene;
   private readonly rng: Rng;
-  private readonly onReward: (reward: MatchReward) => void;
+  private readonly onReward: (reward: MatchReward, pops: GemPop[]) => void;
+  private panel!: Phaser.GameObjects.Graphics;
   private readonly geom = boardGeom();
   private readonly grid: Grid;
   private readonly gems = new Map<number, GemSprite>();
@@ -80,7 +88,7 @@ export class Board {
   private hinting = false;
   private hintTweens: Phaser.Tweens.Tween[] = [];
 
-  constructor(scene: Phaser.Scene, onReward: (reward: MatchReward) => void, rng: Rng = Math.random) {
+  constructor(scene: Phaser.Scene, onReward: (reward: MatchReward, pops: GemPop[]) => void, rng: Rng = Math.random) {
     this.scene = scene;
     this.onReward = onReward;
     this.rng = rng;
@@ -130,6 +138,7 @@ export class Board {
     const g = this.geom;
     const pad = 10;
     const panel = this.scene.add.graphics().setDepth(12);
+    this.panel = panel;
     panel.fillStyle(0x171b26, 1);
     panel.fillRoundedRect(g.originX - pad, g.originY - pad, g.size + pad * 2, g.size + pad * 2, 14);
     panel.lineStyle(2, 0xffffff, 0.06);
@@ -145,7 +154,7 @@ export class Board {
     const layer = this.scene.add.container(0, 0).setDepth(16);
     const maskG = this.scene.make.graphics({ x: 0, y: 0 }, false);
     maskG.fillStyle(0xffffff, 1);
-    maskG.fillRoundedRect(g.originX - 2, g.originY - 2, g.size + 4, g.size + 4, 10);
+    maskG.fillRoundedRect(g.originX - 14, g.originY - 14, g.size + 28, g.size + 28, 12);
     layer.setMask(maskG.createGeometryMask());
     return layer;
   }
@@ -263,8 +272,14 @@ export class Board {
       const step = resolveStep(this.grid, first ? { ...act, rng: this.rng } : { rng: this.rng });
       if (!step) break;
       first = false;
-      this.onReward(rewardForStep(step, combo));
-      await this.animateStep(step);
+      const reward = rewardForStep(step, combo);
+      const pops = step.cleared.slice(0, 8).map(({ cell, pos }) => {
+        const point = cellCenter(pos.c, pos.r);
+        return { x: point.x, y: point.y, color: cell.color };
+      });
+      this.onReward(reward, pops);
+      this.shake(reward.strikes.length > 0 ? 7 : reward.combo >= 2 || reward.big ? 4 : 0);
+      await this.animateStep(step, reward.combo + reward.strikes.length * 2);
       combo += 1;
       if (combo <= BALANCE.match.maxCascades && this.scene.sys.isActive()) {
         await wait(this.scene, BALANCE.anim.cascadeGap);
@@ -284,7 +299,26 @@ export class Board {
     this.idle = 0;
   }
 
-  private async animateStep(step: ClearStep): Promise<void> {
+  private shake(amount: number): void {
+    if (amount <= 0) return;
+    const targets = [this.gemLayer, this.panel];
+    this.scene.tweens.killTweensOf(targets);
+    this.gemLayer.x = 0;
+    this.panel.x = 0;
+    this.scene.tweens.add({
+      targets,
+      x: amount,
+      duration: 34,
+      yoyo: true,
+      repeat: 3,
+      onComplete: () => {
+        this.gemLayer.x = 0;
+        this.panel.x = 0;
+      },
+    });
+  }
+
+  private async animateStep(step: ClearStep, intensity: number): Promise<void> {
     for (const created of step.transforms) {
       const sprite = this.gems.get(created.id);
       const cell = this.findById(created.id);
@@ -296,7 +330,7 @@ export class Board {
 
     await Promise.all(
       step.cleared.map(async ({ cell, pos }) => {
-        this.burst(pos, cell.color);
+        this.burst(pos, cell.color, intensity);
         const sprite = this.gems.get(cell.id);
         if (!sprite) return;
         await new Promise<void>((resolve) => {
@@ -365,19 +399,21 @@ export class Board {
     return glide(this.scene, sprite.root, point.x, point.y, ms);
   }
 
-  private burst(pos: Pos, color: GemColor): void {
+  private burst(pos: Pos, color: GemColor, intensity: number): void {
     const point = cellCenter(pos.c, pos.r);
-    const hex = color === 'credit' ? 0xf0c43a : color === 'infantry' ? 0xe24b4b : color === 'armor' ? 0x4c8dff : color === 'repair' ? 0x3ecf7a : 0xc45bff;
-    for (let i = 0; i < 5; i++) {
-      const dot = this.scene.add.circle(point.x, point.y, 3.2, hex, 1);
+    const hex = GEM_HEX[color];
+    const count = Math.min(10, 4 + intensity);
+    const reach = 16 + intensity * 4;
+    for (let i = 0; i < count; i++) {
+      const dot = this.scene.add.circle(point.x, point.y, i % 3 === 0 ? 4 : 2.4, hex, 1);
       this.gemLayer.add(dot);
-      const angle = (Math.PI * 2 * i) / 5;
+      const angle = (Math.PI * 2 * i) / count;
       this.scene.tweens.add({
         targets: dot,
-        x: point.x + Math.cos(angle) * 20,
-        y: point.y + Math.sin(angle) * 20,
+        x: point.x + Math.cos(angle) * reach,
+        y: point.y + Math.sin(angle) * reach,
         alpha: 0,
-        duration: 240,
+        duration: 220 + intensity * 20,
         onComplete: () => dot.destroy(),
       });
     }
