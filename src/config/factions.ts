@@ -25,6 +25,12 @@ export interface FactionDef {
   name: string;
   blurb: string;
   color: number;
+  /** Display bars, each 0 to 5. They do not change battle math. */
+  economy: number;
+  tech: number;
+  diplomacy: number;
+  perk: string;
+  beachhead: string;
   startRegion: RegionId;
   startNode: number;
   leader: CommanderId;
@@ -36,6 +42,11 @@ export const FACTIONS: Record<FactionId, FactionDef> = {
     name: 'Azure Coalition',
     blurb: 'Blue domes, hangars, and prism towers. No pacts. Outbuild everyone.',
     color: 0x3a78c8,
+    economy: 3,
+    tech: 4,
+    diplomacy: 1,
+    perk: 'Wall shield. Prices fall 15%.',
+    beachhead: 'Beachhead: the western shore',
     startRegion: 'town',
     startNode: 1,
     leader: 'rump',
@@ -45,6 +56,11 @@ export const FACTIONS: Record<FactionId, FactionDef> = {
     name: 'Crimson Directorate',
     blurb: 'Red industry, coil towers, and gold domes. A late pact with the ice is possible.',
     color: 0xc4473a,
+    economy: 4,
+    tech: 3,
+    diplomacy: 5,
+    perk: 'Next road opens. Funds grow with rank.',
+    beachhead: 'Beachhead: the eastern harbor',
     startRegion: 'coast',
     startNode: 15,
     leader: 'xin',
@@ -54,6 +70,11 @@ export const FACTIONS: Record<FactionId, FactionDef> = {
     name: 'Frost Mandate',
     blurb: 'White ramparts and a long table. A late pact with the red furnaces is possible.',
     color: 0x6a90b0,
+    economy: 3,
+    tech: 3,
+    diplomacy: 4,
+    perk: 'Tougher tanks. Foes crawl at first.',
+    beachhead: 'Beachhead: the northern ice',
     startRegion: 'forest',
     startNode: 4,
     leader: 'pootin',
