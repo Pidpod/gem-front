@@ -22,6 +22,7 @@ import {
   type SaveData,
 } from '../progress';
 import { FONT, INK, MUTED } from '../theme';
+import { paintMetal } from '../ui/metal';
 import { addBackdrop } from '../ui/backdrop';
 import { UiButton } from '../ui/button';
 
@@ -45,6 +46,8 @@ export class HqScene extends Phaser.Scene {
   create(): void {
     this.save = loadProgress();
     addBackdrop(this);
+    const bar = this.add.graphics().setDepth(20);
+    paintMetal(bar, 0, 0, VIEW_W, 52, 0x4e493c);
     this.add
       .text(20, 28, 'MAIN HQ', { fontFamily: FONT, fontSize: '26px', color: INK, fontStyle: 'bold' })
       .setOrigin(0, 0.5)

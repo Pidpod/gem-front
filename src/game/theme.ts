@@ -1,6 +1,6 @@
 import type { GemColor } from './types';
 
-export const FONT = 'Verdana, "Trebuchet MS", sans-serif';
+export const FONT = 'Kanit, Verdana, "Trebuchet MS", sans-serif';
 
 export const INK = '#f4f1ea';
 export const MUTED = '#b7c0c8';

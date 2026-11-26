@@ -1,5 +1,6 @@
 import { sfx } from '../../audio/sfx';
 import { BALANCE, STRIKE_LABEL } from '../../config/balance';
+import { installIso, project } from '../art/iso';
 import { installArt } from '../art/sheets';
 import { defaultTuning, type Tuning } from '../loadout';
 import { LANE, VIEW_W } from '../layout';
@@ -17,14 +18,14 @@ interface UnitView {
 }
 
 const LOOK: Record<UnitKind, string> = {
-  infantry: 'px-infantry',
-  tank: 'px-tank',
-  heli: 'px-heli',
-  medic: 'px-medic',
-  rocket: 'px-rocket',
-  heavy: 'px-heavy',
-  artillery: 'px-artillery',
-  ship: 'px-ship',
+  infantry: 'iso-infantry',
+  tank: 'iso-tank',
+  heli: 'iso-heli',
+  medic: 'iso-medic',
+  rocket: 'iso-rocket',
+  heavy: 'iso-heavy',
+  artillery: 'iso-artillery',
+  ship: 'iso-ship',
 };
 
 export class Battlefield {
@@ -35,10 +36,9 @@ export class Battlefield {
   private readonly views = new Map<number, UnitView>();
   private readonly spawnQueue: UnitKind[] = [];
   private readonly clouds: Phaser.GameObjects.Container;
-  private readonly hills: Phaser.GameObjects.Container;
+  private readonly radar: Phaser.GameObjects.Graphics;
   private spawnCooldown = 0;
   private cloudShift = 0;
-  private hillShift = 0;
   private fxCount = 0;
   private playerBase!: Phaser.GameObjects.Sprite;
   private enemyBase!: Phaser.GameObjects.Sprite;
@@ -50,30 +50,34 @@ export class Battlefield {
     this.tuning = tuning;
     this.sim = new BattleSim(rng, tuning);
     installArt(scene);
+    installIso(scene);
     this.world = scene.add.container(0, 0).setDepth(6);
     this.clouds = scene.add.container(0, 0);
-    this.hills = scene.add.container(0, 0);
-    this.world.add([this.clouds, this.hills]);
+    this.world.add(this.clouds);
     this.drawScenery();
     this.playerBase = this.makeBase('player');
     this.enemyBase = this.makeBase('enemy');
-    if (tuning.boss) this.enemyBase.setScale(1.85);
+    if (tuning.boss) this.enemyBase.setScale(1.35);
+    const youAt = project(LANE.playerX + 30, LANE.groundY);
+    const foeAt = project(LANE.enemyX - 30, LANE.groundY);
     const you = scene.add
-      .text(LANE.playerX, LANE.top + 14, 'YOU', {
+      .text(youAt.sx, youAt.sy - 46, 'YOU', {
         fontFamily: FONT,
         fontSize: '12px',
         color: '#d7ec9a',
         fontStyle: 'bold',
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setDepth(youAt.sy);
     const foe = scene.add
-      .text(LANE.enemyX, LANE.top + 14, 'FOE', {
+      .text(foeAt.sx, foeAt.sy - 46, 'FOE', {
         fontFamily: FONT,
         fontSize: '12px',
         color: '#ffb0a4',
         fontStyle: 'bold',
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setDepth(foeAt.sy);
     this.world.add([you, foe]);
     const objective = scene.add
       .text(VIEW_W / 2, LANE.top + 14, tuning.title, {
@@ -83,6 +87,7 @@ export class Battlefield {
       })
       .setOrigin(0.5);
     this.world.add(objective);
+    this.radar = scene.add.graphics().setDepth(28);
     scene.tweens.add({
       targets: objective,
       alpha: 0,
@@ -123,6 +128,7 @@ export class Battlefield {
     this.applyEvents(events);
     this.sync(this.scene.time.now);
     this.scroll(dt);
+    this.drawRadar();
     return this.sim.outcome;
   }
 
@@ -296,8 +302,10 @@ export class Battlefield {
       alive.add(unit.id);
       let view = this.views.get(unit.id);
       if (!view) view = this.createView(unit);
-      const bob = unit.kind === 'heli' ? Math.sin(time / 180 + unit.id) * 2 : 0;
-      view.root.setPosition(unit.x, unit.y + bob);
+      const at = project(unit.x, unit.y);
+      const bob = unit.kind === 'heli' ? Math.sin(time / 180 + unit.id) * 3 : 0;
+      view.root.setPosition(at.sx, at.sy + bob);
+      view.root.setDepth(at.sy);
       view.body.setFrame(String(Math.floor(time / 140 + unit.id) % view.frames));
       const pct = Math.max(0, unit.hp / unit.maxHp);
       if (Math.abs(pct - view.lastPct) > 0.02) {
@@ -315,20 +323,17 @@ export class Battlefield {
   }
 
   private scroll(dt: number): void {
-    this.cloudShift = (this.cloudShift + dt * 10) % (VIEW_W - 16);
-    this.hillShift = (this.hillShift + dt * 18) % (VIEW_W - 16);
+    this.cloudShift = (this.cloudShift + dt * 8) % (VIEW_W - 16);
     this.clouds.x = -this.cloudShift;
-    this.hills.x = -this.hillShift;
   }
 
   private createView(unit: SimUnit): UnitView {
     const key = `${LOOK[unit.kind]}-${unit.side}`;
     const root = this.scene.add.container(unit.x, unit.y);
-    const body = this.scene.add.sprite(0, unit.kind === 'heli' ? 0 : 6, key, '0');
-    body.setOrigin(0.5, unit.kind === 'heli' ? 0.5 : 0.9);
+    const body = this.scene.add.sprite(0, 0, key, '0');
+    body.setOrigin(0.5, 0.78);
     const small = unit.kind === 'infantry' || unit.kind === 'rocket' || unit.kind === 'medic';
-    body.setScale(unit.kind === 'heli' ? 1.55 : unit.kind === 'ship' ? 1.7 : small ? 1.65 : 1.4);
-    if (unit.side === 'enemy') body.setFlipX(true);
+    body.setScale(unit.kind === 'heli' ? 1.05 : unit.kind === 'ship' || unit.kind === 'heavy' ? 1.15 : small ? 0.95 : 1.08);
     const hp = this.scene.add.graphics();
     root.add([body, hp]);
     this.world.add(root);
@@ -342,16 +347,18 @@ export class Battlefield {
   private drawHp(view: UnitView, side: Side, pct: number): void {
     view.hp.clear();
     view.hp.fillStyle(0x000000, 0.55);
-    view.hp.fillRect(-12, -28, 24, 3);
+    view.hp.fillRect(-14, -36, 28, 4);
     view.hp.fillStyle(side === 'player' ? 0xc6e07a : 0xff6b5b, 1);
-    view.hp.fillRect(-12, -28, 24 * pct, 3);
+    view.hp.fillRect(-14, -36, 28 * pct, 4);
   }
 
   private healBeam(event: Extract<BattleEvent, { type: 'heal' }>): void {
     sfx.heal();
+    const from = project(event.x1, event.y1);
+    const to = project(event.x2, event.y2);
     const line = this.scene.add.graphics();
     line.lineStyle(3, 0x5ee08f, 0.95);
-    line.lineBetween(event.x1, event.y1 - 6, event.x2, event.y2 - 8);
+    line.lineBetween(from.sx, from.sy - 10, to.sx, to.sy - 12);
     this.world.add(line);
     this.scene.tweens.add({
       targets: line,
@@ -363,12 +370,13 @@ export class Battlefield {
   }
 
   private plusBurst(x: number, y: number): void {
+    const at = project(x, y);
     for (let i = 0; i < 3; i++) {
-      const plus = this.scene.add.image(x + (i - 1) * 5, y, 'px-pix').setTint(0x5ee08f).setScale(2.2);
+      const plus = this.scene.add.image(at.sx + (i - 1) * 5, at.sy, 'px-pix').setTint(0x5ee08f).setScale(2.2);
       this.world.add(plus);
       this.scene.tweens.add({
         targets: plus,
-        y: y - 16 - i * 5,
+        y: at.sy - 16 - i * 5,
         alpha: 0,
         duration: 380,
         onComplete: () => plus.destroy(),
@@ -379,12 +387,23 @@ export class Battlefield {
   private shot(event: Extract<BattleEvent, { type: 'attack' }>): void {
     if (this.fxCount > 36) return;
     this.fxCount += 1;
-    const flash = this.scene.add.sprite(event.x1, event.y1, 'px-bullet', 0);
+    const from = project(event.x1, event.y1);
+    const to = project(event.x2, event.y2);
+    const muzzle = this.scene.add.sprite(from.sx, from.sy - 12, 'iso-flash', '0').setScale(0.7);
+    this.world.add(muzzle);
+    this.scene.tweens.add({
+      targets: muzzle,
+      alpha: 0,
+      scale: 1.3,
+      duration: 80,
+      onComplete: () => muzzle.destroy(),
+    });
+    const flash = this.scene.add.sprite(from.sx, from.sy - 8, 'px-bullet', 0);
     this.world.add(flash);
     this.scene.tweens.add({
       targets: flash,
-      x: event.x2,
-      y: event.y2,
+      x: to.sx,
+      y: to.sy,
       duration: event.side === 'player' ? 90 : 90,
       onComplete: () => {
         flash.destroy();
@@ -396,12 +415,13 @@ export class Battlefield {
   private boom(x: number, y: number, scale: number): void {
     if (this.fxCount > 40) return;
     this.fxCount += 1;
-    const blast = this.scene.add.sprite(x, y, 'px-boom', 0).setScale(scale);
+    const at = project(x, y);
+    const blast = this.scene.add.sprite(at.sx, at.sy, 'iso-boom', '0').setScale(scale * 1.35).setDepth(at.sy + 2);
     this.world.add(blast);
     this.scene.tweens.addCounter({
       from: 0,
       to: 4,
-      duration: 280,
+      duration: 360,
       onUpdate: (tween) => blast.setFrame(String(Math.min(4, Math.floor(tween.getValue() ?? 0)))),
       onComplete: () => {
         blast.destroy();
@@ -409,17 +429,19 @@ export class Battlefield {
       },
     });
     this.smoke(x, y);
+    if (scale > 2) this.nudge(5);
   }
 
   private smoke(x: number, y: number): void {
     if (this.fxCount > 44) return;
-    for (let i = 0; i < 2; i++) {
+    const at = project(x, y);
+    for (let i = 0; i < 3; i++) {
       this.fxCount += 1;
-      const puff = this.scene.add.circle(x + (i - 0.5) * 6, y, 4 + i, 0x8a847c, 0.7);
+      const puff = this.scene.add.circle(at.sx + (i - 1) * 8, at.sy, 6 + i * 2, 0x6a6660, 0.55);
       this.world.add(puff);
       this.scene.tweens.add({
         targets: puff,
-        y: y - 16 - i * 6,
+        y: at.sy - 22 - i * 8,
         alpha: 0,
         duration: 420,
         onComplete: () => {
@@ -431,16 +453,17 @@ export class Battlefield {
   }
 
   private debris(x: number, y: number, count: number): void {
+    const at = project(x, y);
     for (let i = 0; i < count; i++) {
       if (this.fxCount > 48) return;
       this.fxCount += 1;
-      const bit = this.scene.add.image(x, y, 'px-pix').setTint(i % 2 === 0 ? 0xc4b48a : 0x6a5434);
+      const bit = this.scene.add.image(at.sx, at.sy, 'px-pix').setTint(i % 2 === 0 ? 0xc4b48a : 0x6a5434).setScale(1.6);
       this.world.add(bit);
       const angle = -Math.PI / 2 + (i - count / 2) * 0.35;
       this.scene.tweens.add({
         targets: bit,
-        x: x + Math.cos(angle) * (10 + i * 3),
-        y: y - 18 + i * 2,
+        x: at.sx + Math.cos(angle) * (14 + i * 4),
+        y: at.sy - 22 + i * 2,
         alpha: 0,
         duration: 380,
         ease: 'Quad.easeOut',
@@ -462,14 +485,16 @@ export class Battlefield {
     scale: number,
     onDone: () => void,
   ): void {
-    const proj = this.scene.add.sprite(x1, y1, key, 0).setScale(scale);
+    const from = project(x1, y1);
+    const to = project(x2, y2);
+    const proj = this.scene.add.sprite(from.sx, from.sy, key, 0).setScale(scale);
     this.world.add(proj);
     const start = this.scene.time.now;
     const tick = () => {
       const t = Math.min(1, (this.scene.time.now - start) / duration);
-      const arcHeight = Math.min(90, Math.abs(x2 - x1) * 0.28);
-      proj.x = x1 + (x2 - x1) * t;
-      proj.y = y1 + (y2 - y1) * t - Math.sin(Math.PI * t) * arcHeight;
+      const arcHeight = Math.min(70, Math.hypot(to.sx - from.sx, to.sy - from.sy) * 0.35);
+      proj.x = from.sx + (to.sx - from.sx) * t;
+      proj.y = from.sy + (to.sy - from.sy) * t - Math.sin(Math.PI * t) * arcHeight;
       proj.rotation = t * 2;
       if (t < 1) {
         this.scene.time.delayedCall(16, tick);
@@ -498,13 +523,16 @@ export class Battlefield {
   }
 
   private beam(): void {
-    const beam = this.scene.add.rectangle(VIEW_W / 2, LANE.groundY - 20, VIEW_W - 24, 10, 0xd58bff, 0.95);
+    const from = project(LANE.playerX, LANE.groundY);
+    const to = project(LANE.enemyX, LANE.groundY);
+    const beam = this.scene.add.graphics();
+    beam.lineStyle(16, 0xd58bff, 0.9);
+    beam.lineBetween(from.sx, from.sy, to.sx, to.sy);
     this.world.add(beam);
     this.scene.tweens.add({
       targets: beam,
-      scaleY: 4,
       alpha: 0,
-      duration: 280,
+      duration: 320,
       onComplete: () => beam.destroy(),
     });
     this.nudge(6);
@@ -517,50 +545,31 @@ export class Battlefield {
   }
 
   private makeBase(side: Side): Phaser.GameObjects.Sprite {
-    const key = side === 'player' ? 'px-base-player' : 'px-base-enemy';
-    const sprite = this.scene.add.sprite(side === 'player' ? LANE.playerX : LANE.enemyX, LANE.groundY + 2, key, '0');
-    sprite.setOrigin(0.5, 1);
-    sprite.setScale(1.55);
+    const key = side === 'player' ? 'iso-base-player' : 'iso-base-enemy';
+    const at = project(side === 'player' ? LANE.playerX + 30 : LANE.enemyX - 30, LANE.groundY);
+    const sprite = this.scene.add.sprite(at.sx, at.sy, key, '0');
+    sprite.setOrigin(0.5, 0.78);
+    sprite.setScale(1.25);
+    sprite.setDepth(at.sy);
     this.world.add(sprite);
     return sprite;
   }
 
   private drawScenery(): void {
-    const sky = this.scene.add.graphics();
-    const bands = [0x8ec8ef, 0x7eb6e4, 0x6aa6d8, 0x8fb8c8, 0xa9c4b0];
-    const top = LANE.top;
-    const span = LANE.groundY - LANE.top;
-    bands.forEach((color, index) => {
-      sky.fillStyle(color, 1);
-      sky.fillRect(8, top + Math.floor((span * index) / bands.length), VIEW_W - 16, Math.ceil(span / bands.length) + 1);
-    });
-    sky.fillStyle(0x6d8f4a, 1);
-    sky.fillRect(8, LANE.groundY - 8, VIEW_W - 16, LANE.bottom - LANE.groundY + 8);
-    sky.fillStyle(0x8a7044, 1);
-    sky.fillRect(8, LANE.groundY + 10, VIEW_W - 16, LANE.bottom - LANE.groundY - 10);
-    sky.fillStyle(0xc6a15a, 0.55);
-    for (let x = 16; x < VIEW_W - 16; x += 8) sky.fillRect(x, LANE.groundY + 18, 4, 2);
-    sky.fillStyle(0x5e7a38, 1);
-    for (let x = 20; x < VIEW_W - 20; x += 14) sky.fillRect(x, LANE.groundY - 6, 2, 4);
-    sky.fillStyle(0x1d4e78, 1);
-    sky.fillRect(8, LANE.bottom - 26, VIEW_W - 16, 26);
-    sky.fillStyle(0x8fd0f0, 0.35);
-    for (let x = 16; x < VIEW_W - 16; x += 18) sky.fillRect(x, LANE.bottom - 18, 8, 2);
+    const field = this.scene.add.image(0, 0, 'iso-terrain').setOrigin(0, 0);
+    this.world.addAt(field, 0);
     if (this.tuning.regionTint) {
-      sky.fillStyle(this.tuning.regionTint, 0.22);
-      sky.fillRect(8, LANE.top, VIEW_W - 16, LANE.bottom - LANE.top);
+      const wash = this.scene.add.graphics();
+      wash.fillStyle(this.tuning.regionTint, 0.18);
+      wash.fillRect(16, LANE.top, VIEW_W - 32, LANE.bottom - LANE.top);
+      this.world.add(wash);
     }
-    this.world.addAt(sky, 0);
-
     const paintCloud = (g: Phaser.GameObjects.Graphics, x: number) => {
-      g.fillStyle(0xfffaf2, 0.92);
+      g.fillStyle(0xfffaf2, 0.8);
       g.fillRect(x, 8, 28, 8);
       g.fillRect(x + 6, 4, 16, 6);
-      g.fillRect(x + 40, 14, 22, 6);
       g.fillRect(x + 90, 6, 34, 8);
-      g.fillRect(x + 150, 16, 20, 6);
       g.fillRect(x + 210, 8, 26, 8);
-      g.fillRect(x + 280, 14, 30, 6);
       g.fillRect(x + 340, 6, 24, 8);
     };
     const cloudA = this.scene.add.graphics();
@@ -568,35 +577,38 @@ export class Battlefield {
     paintCloud(cloudA, 0);
     paintCloud(cloudB, VIEW_W - 16);
     this.clouds.add([cloudA, cloudB]);
-    this.clouds.setPosition(8, LANE.top + 8);
-
-    const paintHills = (g: Phaser.GameObjects.Graphics, shift: number) => {
-      steppedHill(g, shift + 10, 8, 120, 36, 0x5d7a3e);
-      steppedHill(g, shift + 150, 4, 150, 42, 0x6e8c48);
-      steppedHill(g, shift + 300, 10, 130, 34, 0x547038);
-    };
-    const hillA = this.scene.add.graphics();
-    const hillB = this.scene.add.graphics();
-    paintHills(hillA, 0);
-    paintHills(hillB, VIEW_W - 16);
-    this.hills.add([hillA, hillB]);
-    this.hills.setPosition(8, LANE.groundY - 48);
+    this.clouds.setPosition(8, LANE.top - 4);
   }
-}
 
-function steppedHill(
-  g: Phaser.GameObjects.Graphics,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  color: number,
-): void {
-  g.fillStyle(color, 1);
-  const step = 4;
-  for (let i = 0; i < height; i += step) {
-    const t = i / height;
-    const inset = Math.floor((((1 - t) * width) / 2) / step) * step;
-    g.fillRect(x + inset, y + i, Math.max(step, width - inset * 2), step);
+  private drawRadar(): void {
+    const x = 12;
+    const y = 78;
+    const w = 86;
+    const h = 52;
+    this.radar.clear();
+    this.radar.fillStyle(0x14120e, 1);
+    this.radar.fillRect(x, y, w, h);
+    this.radar.fillStyle(0xd9c89a, 1);
+    this.radar.fillRect(x, y, w, 2);
+    this.radar.fillRect(x, y, 2, h);
+    this.radar.fillStyle(0x1c1812, 1);
+    this.radar.fillRect(x, y + h - 3, w, 3);
+    this.radar.fillRect(x + w - 3, y, 3, h);
+    this.radar.fillStyle(0x102018, 1);
+    this.radar.fillRect(x + 4, y + 4, w - 8, h - 8);
+    const plot = (sx: number, sy: number, color: number) => {
+      const px = x + 6 + ((sx - 24) / 430) * (w - 12);
+      const py = y + 6 + ((sy - 90) / 250) * (h - 12);
+      this.radar.fillStyle(color, 1);
+      this.radar.fillRect(px, py, 3, 3);
+    };
+    const you = project(LANE.playerX, LANE.groundY);
+    const foe = project(LANE.enemyX, LANE.groundY);
+    plot(you.sx, you.sy, 0xc6e07a);
+    plot(foe.sx, foe.sy, 0xff6b5b);
+    for (const unit of this.sim.units) {
+      const at = project(unit.x, unit.y);
+      plot(at.sx, at.sy, unit.side === 'player' ? 0xe2c15a : 0xd24a3c);
+    }
   }
 }
